@@ -1,12 +1,30 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <TargetFrameworks>netstandard2.0;net452</TargetFrameworks>
     <VersionPrefix>1.0.0</VersionPrefix>
+    <!-- NuGet -->
+    <PackageId>NCoreUtils.IO.Abstractions</PackageId>
+    <Title>$(PackageId)</Title>
+    <Authors>Artyom Antyipin</Authors>
+    <Description>Abstractions of the I/O related utilities.</Description>
+    <Copyright>Artyom Antyipin</Copyright>
+    <RepositoryUrl>https://github.com/artyomszasa/NCoreUtils.IO.git</RepositoryUrl>
+    <!-- Assembly Info -->
+    <Product>NCoreUtils</Product>
+    <AssemblyName>$(PackageId)</AssemblyName>
+    <AssemblyTitle>$(AssemblyName)</AssemblyTitle>
+    <!-- Compilation -->
+    <OutputType>Library</OutputType>
+    <DebugType>portable</DebugType>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>2003</NoWarn>
   </PropertyGroup>
-
   <ItemGroup>
     <Compile Include="Contract.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="NCoreUtils.FSharp" Version="2.0.0" />
   </ItemGroup>
   <!-- mono fix -->
   <PropertyGroup>

@@ -7,9 +7,9 @@ open System.Runtime.CompilerServices
 open System.Runtime.InteropServices
 open System.Threading
 open System.Threading.Tasks
-open System.Threading.Tasks
+open NCoreUtils
 
-type WriteNotifyStream (baseStream : Stream, [<Optional>] leaveOpen : bool) =
+type internal WriteNotifyStream (baseStream : Stream, [<Optional>] leaveOpen : bool) =
   inherit Stream ()
   let started = Event<EventHandler<_>, EventArgs> ()
   let mutable debounce = 0
@@ -60,10 +60,7 @@ type WriteNotifyStream (baseStream : Stream, [<Optional>] leaveOpen : bool) =
     this.Trigger ()
     this.BaseStream.WriteByte value
 
-
-
-
-
+/// Contains operations for asynchronous stream transformations.
 [<Extension>]
 [<RequireQualifiedAccess>]
 [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
@@ -94,6 +91,13 @@ module StreamTransformation =
                   succ ())
         ) }
 
+  /// <summary>
+  /// Creates new asynchronous stream transformation that passes output of the first transformation to the second
+  /// transformation as input using anonymous pipe.
+  /// </summary>
+  /// <param name="first">First stream transformation.</param>
+  /// <param name="second">Second stream transformation.</param>
+  /// <returns>Newly created transformation.</returns>
   [<Extension>]
   [<CompiledName("Chain")>]
   let chain (first : IStreamTransformation) (second : IStreamTransformation) =
@@ -119,19 +123,30 @@ module StreamTransformation =
           client.Dispose () }
 
   [<Struct>]
+  [<DefaultAugmentation(false)>]
+  [<NoEquality; NoComparison>]
   type private SubTransformation =
     | DoTransform of Input : Stream * Transformation : IStreamTransformation
     | DoNothing
 
   [<Struct>]
+  [<DefaultAugmentation(false)>]
+  [<NoEquality; NoComparison>]
   type private SubTransformationKeepState<'TState> =
     | DoTransformKeepState of State : 'TState * Input : Stream * Transformation : IStreamTransformation
     | DoNothingKeepState
 
 
-  [<Extension>]
+  /// <summary>
+  /// Creates new asynchronous stream transformation that dynamically evaluates possible second transformation and if
+  /// second transformation present, passes output of the first transformation to the second transformation as input
+  /// using anonymous pipe.
+  /// </summary>
+  /// <param name="first">First stream transformation.</param>
+  /// <param name="next">Function to evaluate second stream transformation.</param>
+  /// <returns>Newly created transformation.</returns>
   [<CompiledName("Chain")>]
-  let chainDependent (first : IDependentStreamTransformation<'TState>) (next : 'TState -> IStreamTransformation option) =
+  let chainDependent (first : IDependentStreamTransformation<'TState>) (next : 'TState -> IStreamTransformation voption) =
     let toDispose = ref ([] : IDisposable list)
     { new IStreamTransformation with
         member __.Dispose () =
@@ -139,19 +154,18 @@ module StreamTransformation =
         member __.AsyncPerform (input, output) =
           let todo = TaskCompletionSource ()
           let second = async {
-            let! todo = Async.AwaitTask todo.Task
-            match todo with
+            match! Async.AwaitTask todo.Task with
             | DoTransform (input, second) ->
               toDispose := (second :> _) :: (!toDispose)
               do! second.AsyncPerform (input, output)
             | DoNothing -> () }
           let first = async {
-            let lazyInit (second0 : IStreamTransformation option) =
+            let lazyInit (second0 : IStreamTransformation voption) =
               match second0 with
-              | None ->
+              | ValueNone ->
                 todo.TrySetResult DoNothing |> ignore
                 output
-              | Some second ->
+              | ValueSome second ->
                 let server = new AnonymousPipeServerStream (PipeDirection.Out, HandleInheritability.None)
                 let client = new AnonymousPipeClientStream (PipeDirection.In, server.ClientSafePipeHandle)
                 toDispose := (server :> _) :: (client :> _) :: (!toDispose)
@@ -163,3 +177,96 @@ module StreamTransformation =
           |> Async.Parallel
           |> Async.Ignore
     }
+
+  /// Used to evaluate dependent transformation.
+  type DependentTransformationDelegate<'TState> =
+    delegate of state:'TState * [<Out>] transformation:byref<IStreamTransformation> -> bool
+
+  /// <summary>
+  /// Creates new asynchronous stream transformation that dynamically evaluates possible second transformation and if
+  /// second transformation present, passes output of the first transformation to the second transformation as input
+  /// using anonymous pipe.
+  /// </summary>
+  /// <param name="first">First stream transformation.</param>
+  /// <param name="next">Function to evaluate second stream transformation.</param>
+  /// <returns>Newly created transformation.</returns>
+  [<Extension>]
+  [<CompiledName("Chain")>]
+  let chainDependentFunc (first : IDependentStreamTransformation<'TState>) (next : DependentTransformationDelegate<'TState>) =
+    let next' state =
+      let mutable transformation = Unchecked.defaultof<_>
+      match next.Invoke (state, &transformation) with
+      | true -> ValueSome transformation
+      | _    -> ValueNone
+    chainDependent first next'
+
+  /// <summary>
+  /// Creates new asynchronous stream consumer that passes output of the specified transformation to the specified
+  /// consumer as input using anonymous pipe.
+  /// </summary>
+  /// <param name="transformation">Stream transformation.</param>
+  /// <param name="consumer">Stream consumer.</param>
+  /// <returns>Newly created consumer.</returns>
+  [<Extension>]
+  [<CompiledName("Chain")>]
+  let chainConsumer (transformation : IStreamTransformation) (consumer : IStreamConsumer) =
+    let server = new AnonymousPipeServerStream (PipeDirection.Out, HandleInheritability.None)
+    let client = new AnonymousPipeClientStream (PipeDirection.In, server.ClientSafePipeHandle)
+    let producer = new WriteNotifyStream (server)
+    let firstFinished = Event<EventHandler<_>, EventArgs> ()
+    let trigger = Observable.merge producer.Started firstFinished.Publish
+    { new IStreamConsumer with
+        member this.AsyncConsume input =
+          [ async {
+              try do! transformation.AsyncPerform (input, producer)
+              finally firstFinished.Trigger (this, EventArgs.Empty) }
+            async {
+              do! awaitObservable trigger
+              do! consumer.AsyncConsume client } ]
+          |> Async.Parallel
+          |> Async.Ignore
+        member __.Dispose () =
+          transformation.Dispose ()
+          consumer.Dispose ()
+          producer.Dispose ()
+          client.Dispose () }
+
+  /// <summary>
+  /// Performs the transformation defined by the specified instance.
+  /// </summary>
+  /// <param name="source">Input stream.</param>
+  /// <param name="target">Output stream.</param>
+  /// <param name="transformation">Stream transfomration.</param>
+  [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
+  [<CompiledName("AsyncPerform")>]
+  let asyncPerform source target (transformation : IStreamTransformation) =
+    transformation.AsyncPerform (source, target)
+
+/// Contains operations for asynchronous stream consumers.
+[<Extension>]
+[<RequireQualifiedAccess>]
+[<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
+module StreamConsumer =
+
+  /// <summary>
+  /// Creates new asynchronous stream consumer that passes output of the specified transformation to the specified
+  /// consumer as input using anonymous pipe.
+  /// </summary>
+  /// <param name="consumer">Stream consumer.</param>
+  /// <param name="transformation">Stream transformation.</param>
+  /// <returns>Newly created consumer.</returns>
+  [<Extension>]
+  [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
+  [<CompiledName("ChainSource")>]
+  let chain (consumer : IStreamConsumer) (transformation : IStreamTransformation) =
+    StreamTransformation.chainConsumer transformation consumer
+
+  /// <summary>
+  /// Consumes the input stream using the specified consumer.
+  /// </summary>
+  /// <param name="source">Input stream.</param>
+  /// <param name="consumer">Stream consumer.</param>
+  [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
+  [<CompiledName("AsyncConsume")>]
+  let asyncConsume source (consumer : IStreamConsumer) =
+    consumer.AsyncConsume source
