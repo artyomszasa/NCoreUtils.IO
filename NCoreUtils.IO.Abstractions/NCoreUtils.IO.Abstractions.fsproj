@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFrameworks>netstandard2.0;net452</TargetFrameworks>
-    <VersionPrefix>1.0.0</VersionPrefix>
+    <VersionPrefix>2.0.2</VersionPrefix>
     <!-- NuGet -->
     <PackageId>NCoreUtils.IO.Abstractions</PackageId>
     <Title>$(PackageId)</Title>
@@ -22,9 +22,11 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Contract.fs" />
+    <Compile Include="Interop.fs" />
+    <Compile Include="ContractExtensions.fs" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="NCoreUtils.FSharp" Version="2.0.0" />
+    <PackageReference Include="NCoreUtils.FSharp" Version="2.0.2" />
   </ItemGroup>
   <!-- mono fix -->
   <PropertyGroup>
