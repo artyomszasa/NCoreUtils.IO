@@ -262,6 +262,26 @@ module StreamConsumer =
     StreamTransformation.chainConsumer transformation consumer
 
   /// <summary>
+  /// Creates new asynchronous stream consumer that multiplexes the source passing the input to both spcified consumers.
+  /// </summary>
+  /// <param name="consumer">First stream consumer.</param>
+  /// <param name="other">Second stream consumer.</param>
+  /// <returns>Newly created consumer.</returns>
+  [<Extension>]
+  [<CompiledName("Combine")>]
+  let combine (consumer : IStreamConsumer) (other : IStreamConsumer) =
+    let consumers =
+      match consumer with
+      | :? MultiplexingConsumer as m ->
+        Array.init m.Comsumers.Count
+          (fun i ->
+            match i < m.Comsumers.Count with
+            | true -> m.Comsumers.[i]
+            | _    -> other)
+      | _ -> [| consumer; other |]
+    new MultiplexingConsumer (consumers) :> IStreamConsumer
+
+  /// <summary>
   /// Consumes the input stream using the specified consumer.
   /// </summary>
   /// <param name="source">Input stream.</param>
@@ -270,3 +290,4 @@ module StreamConsumer =
   [<CompiledName("AsyncConsume")>]
   let asyncConsume source (consumer : IStreamConsumer) =
     consumer.AsyncConsume source
+

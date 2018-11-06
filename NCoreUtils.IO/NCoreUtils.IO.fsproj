@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFrameworks>netstandard2.0;net452</TargetFrameworks>
-    <VersionPrefix>2.0.2</VersionPrefix>
+    <Version>2.0.3-alpha0</Version>
     <!-- NuGet -->
     <PackageId>NCoreUtils.IO</PackageId>
     <Title>$(PackageId)</Title>
@@ -21,6 +21,7 @@
     <NoWarn>2003</NoWarn>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="MultiplexingConsumer.fs" />
     <Compile Include="StreamTransformation.fs" />
   </ItemGroup>
   <ItemGroup>
