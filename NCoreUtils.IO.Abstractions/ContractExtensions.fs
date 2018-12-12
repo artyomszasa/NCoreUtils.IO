@@ -13,7 +13,7 @@ type StreamTransformation =
   /// Initializes asynchronous stream transformation from the specified parameters.
   /// </summary>
   /// <param name="transformation">Transformation to wrap.</param>
-  /// <param name="action">Optional action to invoke on disposal.</param>
+  /// <param name="dispose">Optional action to invoke on disposal.</param>
   /// <returns>Asynchronous stream transformation.</returns>
   [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
   static member From (transformation, [<Optional; DefaultParameterValue(null:Action<bool>)>] dispose) =
@@ -23,7 +23,7 @@ type StreamTransformation =
   /// Initializes asynchronous stream transformation from the specified parameters.
   /// </summary>
   /// <param name="transformation">Transformation to wrap.</param>
-  /// <param name="action">Optional action to invoke on disposal.</param>
+  /// <param name="dispose">Optional action to invoke on disposal.</param>
   /// <returns>Asynchronous stream transformation.</returns>
   [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
   static member Of (transformation : Stream -> Stream -> Async<unit>, ?dispose : unit -> unit) =
@@ -46,7 +46,7 @@ type StreamConsumer =
   /// Initializes asynchronous stream consumer from the specified parameters.
   /// </summary>
   /// <param name="consume">Consume function to wrap.</param>
-  /// <param name="action">Optional action to invoke on disposal.</param>
+  /// <param name="dispose">Optional action to invoke on disposal.</param>
   /// <returns>Asynchronous stream consumer.</returns>
   [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
   static member From (consume, [<Optional; DefaultParameterValue(null:Action<bool>)>] dispose) =
@@ -56,7 +56,7 @@ type StreamConsumer =
   /// Initializes asynchronous stream consumer from the specified parameters.
   /// </summary>
   /// <param name="consume">Consume function to wrap.</param>
-  /// <param name="action">Optional action to invoke on disposal.</param>
+  /// <param name="dispose">Optional action to invoke on disposal.</param>
   /// <returns>Asynchronous stream consumer.</returns>
   [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
   static member Of (consume : Stream -> Async<unit>, ?dispose : unit -> unit) =
@@ -77,7 +77,7 @@ type DependentStreamTransformation =
   /// Initializes asynchronous dependent stream transformation from the specified parameters.
   /// </summary>
   /// <param name="transformation">Transformation to wrap.</param>
-  /// <param name="action">Optional action to invoke on disposal.</param>
+  /// <param name="dispose">Optional action to invoke on disposal.</param>
   /// <returns>Asynchronous dependent stream transformation.</returns>
   [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
   static member From (transformation, [<Optional; DefaultParameterValue(null: Action<bool>)>] dispose) =
@@ -87,7 +87,7 @@ type DependentStreamTransformation =
   /// Initializes asynchronous dependent stream transformation from the specified parameters.
   /// </summary>
   /// <param name="transformation">Transformation to wrap.</param>
-  /// <param name="action">Optional action to invoke on disposal.</param>
+  /// <param name="dispose">Optional action to invoke on disposal.</param>
   /// <returns>Asynchronous dependent stream transformation.</returns>
   [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
   static member Of (transformation, ?dispose) =
@@ -95,6 +95,37 @@ type DependentStreamTransformation =
         member __.AsyncPerform (input, dependentOutput) =
           if isNull input then nullArg "input"
           transformation input dependentOutput
+        member __.Dispose () =
+          match dispose with
+          | None -> ()
+          | Some dispose -> dispose ()
+    }
+
+// Constains methods to create asynchronous stream producers.
+[<Sealed; AbstractClass>]
+type StreamProducer =
+
+  /// <summary>
+  /// Initializes asynchronous stream producer from the specified parameters.
+  /// </summary>
+  /// <param name="produce">Producer function to wrap.</param>
+  /// <param name="dispose">Optional action to invoke on disposal.</param>
+  /// <returns>Asynchronous stream producer.</returns>
+  static member From (produce, [<Optional; DefaultParameterValue(null:Action<bool>)>] dispose) =
+    AsyncStreamConsumer.From (produce, dispose) :> IStreamConsumer
+
+  /// <summary>
+  /// Initializes asynchronous stream producer from the specified parameters.
+  /// </summary>
+  /// <param name="produce">Producer function to wrap.</param>
+  /// <param name="dispose">Optional action to invoke on disposal.</param>
+  /// <returns>Asynchronous producer.</returns>
+  [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
+  static member Of (produce, ?dispose) =
+    { new IStreamProducer with
+        member __.AsyncProduce output =
+          if isNull output then nullArg "output"
+          produce output
         member __.Dispose () =
           match dispose with
           | None -> ()
@@ -153,7 +184,7 @@ type StreamConsumerExtensions =
   /// <summary>
   /// Consumes the input stream.
   /// </summary>
-  /// <param name="consumer">Asynchronous dependent stream transformation.</param>
+  /// <param name="consumer">Asynchronous stream consumer.</param>
   /// <param name="source">Input stream.</param>
   /// <param name="cancellationToken">Cancellation token.</param>
   [<Extension>]
@@ -163,3 +194,23 @@ type StreamConsumerExtensions =
     | :? AsyncStreamConsumer as inst -> inst.ConsumeDirect (source, cancellationToken)
     | _ ->
       Async.StartAsTask (consumer.AsyncConsume source, cancellationToken = cancellationToken) :> _
+
+
+/// Provides extensions for asynchronous stream producers.
+[<Extension>]
+[<Sealed; AbstractClass>]
+type StreamProducerExtensions =
+
+  /// <summary>
+  /// Populates the output stream.
+  /// </summary>
+  /// <param name="producer">Asynchronous stream producer.</param>
+  /// <param name="target">Output stream.</param>
+  /// <param name="cancellationToken">Cancellation token.</param>
+  [<Extension>]
+  [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
+  static member ConsumeAsync (producer : IStreamProducer, target, [<Optional>] cancellationToken) =
+    match producer with
+    | :? AsyncStreamProducer as inst -> inst.ProduceDirect (target, cancellationToken)
+    | _ ->
+      Async.StartAsTask (producer.AsyncProduce target, cancellationToken = cancellationToken) :> _

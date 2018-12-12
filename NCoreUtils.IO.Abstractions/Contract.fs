@@ -3,6 +3,15 @@ namespace NCoreUtils.IO
 open System
 open System.IO
 
+/// Defines functionality for implementing asynchronous stream producer.
+type IStreamProducer =
+  inherit IDisposable
+  /// <summary>
+  /// Populates contents of the output stream.
+  /// </summary>
+  /// <param name="output">Output stream.</param>
+  abstract AsyncProduce : output:Stream -> Async<unit>
+
 /// Defines functionality for implementing asynchronous stream transformation.
 type IStreamTransformation =
   inherit IDisposable

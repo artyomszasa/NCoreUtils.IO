@@ -221,3 +221,64 @@ and
     override __.Dispose disposing =
       if not (isNull dispose) then
         dispose.Invoke disposing
+
+/// provides base class for implementing asynchronous stream producer.
+[<AbstractClass>]
+type AsyncStreamProducer =
+  /// <summary>
+  /// Initializes asynchronous stream producer from the specified parameters.
+  /// </summary>
+  /// <param name="produce">Producer function to wrap.</param>
+  /// <param name="action">Optional action to invoke on disposal.</param>
+  /// <returns>Asynchronous stream producer.</returns>
+  [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
+  static member From (produce,  [<Optional; DefaultParameterValue(null: Action<bool>)>] dispose) =
+    if isNull produce then nullArg "produce"
+    new AsyncExplicitStreamProducer (produce, dispose) :> AsyncStreamProducer
+
+  /// <summary>
+  /// Initializes asynchronous stream producer.
+  /// </summary>
+  [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
+  new () = { }
+  /// <summary>
+  /// Populates the output stream.
+  /// </summary>
+  /// <param name="source">Input stream.</param>
+  /// <param name="cancellationToken">Cancellation token.</param>
+  abstract ProduceAsync : target:Stream * [<Optional>] cancellationToken:CancellationToken -> Task
+
+  /// <summary>
+  /// Invoked on instance disposal.
+  /// </summary>
+  /// <param name="disposing">Whether the object is being disposed or finalized.</param>
+  abstract Dispose : disposing:bool -> unit
+
+  member inline internal this.ProduceDirect (target, cancellationToken) = this.ProduceAsync (target, cancellationToken)
+
+  [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
+  member this.Dispose () =
+    GC.SuppressFinalize this
+    this.Dispose true
+
+  default __.Dispose _ = ()
+
+  [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
+  member internal this.AsyncProduce target =
+    Async.Adapt (fun cancellationToken -> this.ProduceAsync (target, cancellationToken))
+
+  interface IDisposable with
+    member this.Dispose () = this.Dispose ()
+  interface IStreamProducer with
+    member this.AsyncProduce source = this.AsyncProduce source
+
+and
+  [<Sealed>]
+  private AsyncExplicitStreamProducer (produce : Func<Stream, CancellationToken, Task>, dispose : Action<bool>) =
+    inherit AsyncStreamProducer ()
+    override __.ProduceAsync (source, cancellationToken) =
+      if isNull source then nullArg "source"
+      produce.Invoke (source, cancellationToken)
+    override __.Dispose disposing =
+      if not (isNull dispose) then
+        dispose.Invoke disposing

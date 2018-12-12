@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFrameworks>netstandard2.0;net452</TargetFrameworks>
-    <Version>2.0.3-alpha0</Version>
+    <Version>2.0.3-alpha1</Version>
     <!-- NuGet -->
     <PackageId>NCoreUtils.IO</PackageId>
     <Title>$(PackageId)</Title>

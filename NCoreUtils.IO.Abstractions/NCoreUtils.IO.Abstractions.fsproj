@@ -1,7 +1,7 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFrameworks>netstandard2.0;net452</TargetFrameworks>
-    <VersionPrefix>2.0.2</VersionPrefix>
+    <Version>2.0.3-alpha1</Version>
     <!-- NuGet -->
     <PackageId>NCoreUtils.IO.Abstractions</PackageId>
     <Title>$(PackageId)</Title>
@@ -18,8 +18,7 @@
     <DebugType>portable</DebugType>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <NoWarn>2003</NoWarn>
-  </PropertyGroup>
+    <NoWarn>2003</NoWarn>  </PropertyGroup>
   <ItemGroup>
     <Compile Include="Contract.fs" />
     <Compile Include="Interop.fs" />
