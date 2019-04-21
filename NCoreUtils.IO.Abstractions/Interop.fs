@@ -222,6 +222,69 @@ and
       if not (isNull dispose) then
         dispose.Invoke disposing
 
+/// provides base class for implementing asynchronous stream consumer that produces some result.
+[<AbstractClass>]
+type AsyncStreamConsumer<'T> =
+  /// <summary>
+  /// Initializes asynchronous stream consumer from the specified parameters.
+  /// </summary>
+  /// <param name="consume">Consume function to wrap.</param>
+  /// <param name="action">Optional action to invoke on disposal.</param>
+  /// <returns>Asynchronous stream consumer.</returns>
+  [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
+  static member From (consume,  [<Optional; DefaultParameterValue(null: Action<bool>)>] dispose) =
+    if isNull consume then nullArg "consume"
+    new AsyncExplicitStreamConsumer<'T> (consume, dispose) :> AsyncStreamConsumer<'T>
+
+  /// <summary>
+  /// Initializes asynchronous stream consumer.
+  /// </summary>
+  [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
+  new () = { }
+
+  /// <summary>
+  /// Consumes the input stream.
+  /// </summary>
+  /// <param name="source">Input stream.</param>
+  /// <param name="cancellationToken">Cancellation token.</param>
+  abstract ConsumeAsync : source:Stream * [<Optional>] cancellationToken:CancellationToken -> Task<'T>
+
+  /// <summary>
+  /// Invoked on instance disposal.
+  /// </summary>
+  /// <param name="disposing">Whether the object is being disposed or finalized.</param>
+  abstract Dispose : disposing:bool -> unit
+
+  member inline internal this.ConsumeDirect (source, cancellationToken) = this.ConsumeAsync (source, cancellationToken)
+
+  [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
+  member this.Dispose () =
+    GC.SuppressFinalize this
+    this.Dispose true
+
+  default __.Dispose _ = ()
+
+  [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
+  member internal this.AsyncConsume source =
+    Async.Adapt (fun cancellationToken -> this.ConsumeAsync (source, cancellationToken))
+
+  interface IDisposable with
+    member this.Dispose () = this.Dispose ()
+  interface IStreamConsumer<'T> with
+    member this.AsyncConsume source = this.AsyncConsume source
+
+and
+  [<Sealed>]
+  private AsyncExplicitStreamConsumer<'T> (consume : Func<Stream, CancellationToken, Task<'T>>, dispose : Action<bool>) =
+    inherit AsyncStreamConsumer<'T> ()
+    override __.ConsumeAsync (source, cancellationToken) =
+      if isNull source then nullArg "source"
+      consume.Invoke (source, cancellationToken)
+    override __.Dispose disposing =
+      if not (isNull dispose) then
+        dispose.Invoke disposing
+
+
 /// provides base class for implementing asynchronous stream producer.
 [<AbstractClass>]
 type AsyncStreamProducer =

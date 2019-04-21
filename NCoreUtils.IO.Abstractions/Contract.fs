@@ -31,6 +31,17 @@ type IStreamConsumer =
   /// <param name="input">Input stream.</param>
   abstract AsyncConsume : input:Stream -> Async<unit>
 
+/// Defines functionality for implementing asynchronous stream consumer that produces some result.
+type IStreamConsumer<'T> =
+  inherit IDisposable
+  /// <summary>
+  /// Consumes the input stream.
+  /// </summary>
+  /// <param name="input">Input stream.</param>
+  /// <returns>Result of the consumption.</returns>
+  abstract AsyncConsume : input:Stream -> Async<'T>
+
+
 /// Defines functionality for implementing dependent asynchronous stream transformation.
 type IDependentStreamTransformation<'TState> =
   inherit IDisposable

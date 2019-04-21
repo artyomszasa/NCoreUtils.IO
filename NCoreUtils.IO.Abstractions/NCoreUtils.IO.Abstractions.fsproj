@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFrameworks>netstandard2.0;net452</TargetFrameworks>
-    <Version>2.0.3-alpha1</Version>
+    <Version>2.1.0-alpha0</Version>
     <!-- NuGet -->
     <PackageId>NCoreUtils.IO.Abstractions</PackageId>
     <Title>$(PackageId)</Title>
@@ -9,6 +9,7 @@
     <Description>Abstractions of the I/O related utilities.</Description>
     <Copyright>Artyom Antyipin</Copyright>
     <RepositoryUrl>https://github.com/artyomszasa/NCoreUtils.IO.git</RepositoryUrl>
+    <PackageReleaseNotes>Target F# 4.6.</PackageReleaseNotes>
     <!-- Assembly Info -->
     <Product>NCoreUtils</Product>
     <AssemblyName>$(PackageId)</AssemblyName>
@@ -25,7 +26,10 @@
     <Compile Include="ContractExtensions.fs" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="NCoreUtils.FSharp" Version="2.0.2" />
+    <PackageReference Include="NCoreUtils.FSharp" Version="2.1.0-alpha0" />
+  </ItemGroup>
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net452' ">
+    <PackageReference Update="System.ValueTuple" Version="4.5.0" />
   </ItemGroup>
   <!-- mono fix -->
   <PropertyGroup>

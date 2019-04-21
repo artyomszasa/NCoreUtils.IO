@@ -195,6 +195,21 @@ type StreamConsumerExtensions =
     | _ ->
       Async.StartAsTask (consumer.AsyncConsume source, cancellationToken = cancellationToken) :> _
 
+  /// <summary>
+  /// Consumes the input stream producing some result.
+  /// </summary>
+  /// <param name="consumer">Asynchronous stream consumer.</param>
+  /// <param name="source">Input stream.</param>
+  /// <param name="cancellationToken">Cancellation token.</param>
+  [<Extension>]
+  [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
+  static member ConsumeAsync (consumer : IStreamConsumer<'T>, source, [<Optional>] cancellationToken) =
+    match consumer with
+    | :? AsyncStreamConsumer<'T> as inst ->
+      inst.ConsumeDirect (source, cancellationToken)
+    | _ ->
+      Async.StartAsTask (consumer.AsyncConsume source, cancellationToken = cancellationToken)
+
 
 /// Provides extensions for asynchronous stream producers.
 [<Extension>]
