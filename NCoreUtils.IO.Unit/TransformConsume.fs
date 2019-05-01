@@ -35,6 +35,34 @@ let ``successfull`` () =
   Assert.True !transformationDisposed
 
 [<Fact>]
+let ``successfull to result`` () =
+  let transformationDisposed = ref false
+  let transformation =
+    { new IStreamTransformation with
+        member __.AsyncPerform (input, output) = async {
+          do! Stream.asyncCopyTo output input
+          output.Close () }
+        member __.Dispose () = transformationDisposed := true
+    }
+  let consumerDisposed = ref false
+  let consumer =
+    { new IStreamConsumer<string> with
+        member __.AsyncConsume input = async {
+          use buffer = new MemoryStream ()
+          do! Stream.asyncCopyTo buffer input
+          return buffer.ToArray () |> Encoding.UTF8.GetString }
+        member __.Dispose () = consumerDisposed := true
+    }
+  do
+    use chain = StreamTransformation.chainToResultConsumer transformation consumer
+    use buffer = new MemoryStream (data, false)
+    let res = StreamToResultConsumer.asyncConsume buffer chain |> Async.RunSynchronously
+    Assert.Equal ("test", res)
+  Assert.True !consumerDisposed
+  Assert.True !transformationDisposed
+
+
+[<Fact>]
 let ``successfull no-close`` () =
   let transformationDisposed = ref false
   let transformation =

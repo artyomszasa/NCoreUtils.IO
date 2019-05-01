@@ -49,7 +49,7 @@ let ``successfull no-close`` () =
     use chain = StreamTransformation.chain transformation2 transformation1
     use source = new MemoryStream (data, false)
     use buffer = new MemoryStream ()
-    chain.AsyncPerform (source, buffer) |> Async.RunSynchronously
+    chain.PerformAsync(source, buffer).Wait()
     Assert.Equal ("test", buffer.ToArray () |> Encoding.UTF8.GetString)
   Assert.True !transformation1Disposed
   Assert.True !transformation2Disposed

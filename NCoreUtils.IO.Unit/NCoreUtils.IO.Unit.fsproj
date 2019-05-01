@@ -4,6 +4,8 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Consume.fs" />
+    <Compile Include="Produce.fs" />
     <Compile Include="ProduceTransform.fs" />
     <Compile Include="TransformConsume.fs" />
     <Compile Include="TransformTransform.fs" />
@@ -11,14 +13,11 @@
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="coverlet.msbuild" Version="2.6.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.9.0" />
     <PackageReference Include="xunit" Version="2.4.0" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.4.0" />
-    <PackageReference Include="ReportGenerator" Version="3.1.2" PrivateAssets="All" />
-    <PackageReference Include="coverlet.msbuild" Version="2.3.0">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
-    </PackageReference>
+    <PackageReference Include="ReportGenerator" Version="4.1.4" PrivateAssets="All" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\NCoreUtils.IO\NCoreUtils.IO.fsproj" />
@@ -50,7 +49,7 @@
     <!-- msbuild not integrated this yet...
     <CallTarget Targets="VSTest" />
     -->
-    <Exec Command="dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover" />
+    <Exec Command="dotnet test --no-restore /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Include=&quot;[NCoreUtils.IO*]*&quot; /p:Exclude=&quot;[NCoreUtils.IO.Unit]*&quot; /p:ParallelizeTestCollections=false" />
     <Exec Command="mono $(UseReportGeneratorPath) -reports:coverage.opencover.xml -targetdir:report -reporttypes:Html" Condition="'$(OS)' == 'Unix'" />
     <Exec Command="$(UseReportGeneratorPath) -reports:coverage.opencover.xml -targetdir:report -reporttypes:Html" Condition="'$(OS)' != 'Unix'" />
   </Target>

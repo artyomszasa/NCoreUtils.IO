@@ -4,11 +4,14 @@ open System
 open System.Collections.Generic
 open System.IO
 open System.IO.Pipes
+open System.Runtime.CompilerServices
 open NCoreUtils
 
 [<AutoOpen>]
 module private MultiplexingConsumerHelpers =
-  let inline internal bindToValue op ref = async {
+
+  [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
+  let internal bindToValue op ref = async {
     let! value = op
     ref := value }
 
@@ -17,12 +20,12 @@ type private MultiplexingConsumer (bufferSize : int, consumers : IReadOnlyList<I
 
   new (consumers) = new MultiplexingConsumer (8192, consumers)
 
-  member val Comsumers  = consumers
+  member val Consumers  = consumers
   member val BufferSize = bufferSize
 
   interface IDisposable with
     member this.Dispose () =
-      this.Comsumers
+      this.Consumers
       |> Seq.iter (fun consumer -> consumer.Dispose ())
   interface IStreamConsumer with
     member this.AsyncConsume source = async {
@@ -56,7 +59,7 @@ type private MultiplexingConsumer (bufferSize : int, consumers : IReadOnlyList<I
             (fun i ->
               match i with
               | 0 -> multiplex
-              | _ -> this.Comsumers.[i - 1].AsyncConsume clients.[i - 1]
+              | _ -> this.Consumers.[i - 1].AsyncConsume clients.[i - 1]
             )
         do!
           Async.Parallel computations

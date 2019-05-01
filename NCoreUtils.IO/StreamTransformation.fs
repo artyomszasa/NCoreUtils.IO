@@ -361,13 +361,25 @@ module StreamConsumer =
   [<CompiledName("Combine")>]
   let combine (consumer : IStreamConsumer) (other : IStreamConsumer) =
     let consumers =
-      match consumer with
-      | :? MultiplexingConsumer as m ->
-        Array.init m.Comsumers.Count
+      match consumer, other with
+      | (:? MultiplexingConsumer as m0), (:? MultiplexingConsumer as m1) ->
+        Array.init (m0.Consumers.Count + m1.Consumers.Count)
           (fun i ->
-            match i < m.Comsumers.Count with
-            | true -> m.Comsumers.[i]
-            | _    -> other)
+            match i < m0.Consumers.Count with
+            | true -> m0.Consumers.[i]
+            | _    -> m1.Consumers.[i - m0.Consumers.Count])
+      | (:? MultiplexingConsumer as m), c ->
+        Array.init (m.Consumers.Count + 1)
+          (fun i ->
+            match i < m.Consumers.Count with
+            | true -> m.Consumers.[i]
+            | _    -> c)
+      | c, (:? MultiplexingConsumer as m) ->
+        Array.init (m.Consumers.Count + 1)
+          (fun i ->
+            match i < m.Consumers.Count with
+            | true -> m.Consumers.[i]
+            | _    -> c)
       | _ -> [| consumer; other |]
     new MultiplexingConsumer (consumers) :> IStreamConsumer
 
