@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>netstandard2.0;net452</TargetFrameworks>
-    <Version>2.1.0</Version>
+    <TargetFrameworks>netstandard2.0;netstandard2.1;net452</TargetFrameworks>
+    <Version>3.0.0-alpha0</Version>
     <!-- NuGet -->
     <PackageId>NCoreUtils.IO.Abstractions</PackageId>
     <Title>$(PackageId)</Title>
@@ -27,7 +27,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Update="FSharp.Core" Version="4.6.2" />
-    <PackageReference Include="NCoreUtils.FSharp" Version="2.1.0" />
+    <PackageReference Include="NCoreUtils.FSharp" Version="3.0.0-alpha0" />
   </ItemGroup>
   <ItemGroup Condition=" '$(TargetFramework)' == 'net452' ">
     <PackageReference Update="System.ValueTuple" Version="4.5.0" />
