@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFrameworks>netstandard2.0;netstandard2.1;net452</TargetFrameworks>
-    <Version>3.0.0-alpha0</Version>
+    <Version>3.0.0-preview8.1</Version>
     <!-- NuGet -->
     <PackageId>NCoreUtils.IO.Abstractions</PackageId>
     <Title>$(PackageId)</Title>
@@ -19,15 +19,16 @@
     <DebugType>portable</DebugType>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <NoWarn>2003</NoWarn>  </PropertyGroup>
+    <NoWarn>2003;NU5105</NoWarn>
+  </PropertyGroup>
   <ItemGroup>
     <Compile Include="Contract.fs" />
     <Compile Include="Interop.fs" />
     <Compile Include="ContractExtensions.fs" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Update="FSharp.Core" Version="4.6.2" />
-    <PackageReference Include="NCoreUtils.FSharp" Version="3.0.0-alpha0" />
+    <PackageReference Update="FSharp.Core" Version="4.7.0" />
+    <PackageReference Include="NCoreUtils.FSharp" Version="3.0.0-preview8.1" />
   </ItemGroup>
   <ItemGroup Condition=" '$(TargetFramework)' == 'net452' ">
     <PackageReference Update="System.ValueTuple" Version="4.5.0" />

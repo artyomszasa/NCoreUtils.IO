@@ -1,5 +1,8 @@
+.vscode
+.ionide
+
 NCoreUtils*/bin
 NCoreUtils*/obj
-.vscode
+
 NCoreUtils.IO.Unit/coverage.opencover.xml
 NCoreUtils.IO.Unit/report
