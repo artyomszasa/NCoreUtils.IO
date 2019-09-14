@@ -5,6 +5,8 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Common.fs" />
+    <Compile Include="Invalid.fs" />
     <Compile Include="Consume.fs" />
     <Compile Include="Produce.fs" />
     <Compile Include="ProduceTransform.fs" />

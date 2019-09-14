@@ -2,7 +2,7 @@ dist: xenial
 language: csharp
 solution: NCoreUtils.IO.sln
 mono: none
-dotnet: 2.2.203
+dotnet: 3.0.100-preview9-014004
 script:
   - dotnet restore
-  - dotnet test -c Debug -f netcoreapp2.2 NCoreUtils.IO.Unit
+  - dotnet test -c Debug -f netcoreapp3.0 NCoreUtils.IO.Unit

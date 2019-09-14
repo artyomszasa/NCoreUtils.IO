@@ -28,7 +28,7 @@ let ``successfull`` () =
   do
     use chain = StreamTransformation.chainProducer transformation producer
     use buffer = new MemoryStream ()
-    StreamProducer.asyncProduce buffer chain |> Async.RunSynchronously
+    Async.RunSynchronously (StreamProducer.asyncProduce buffer chain, 300)
     Assert.Equal ("test", buffer.ToArray () |> Encoding.UTF8.GetString)
   Assert.True !producerDisposed
   Assert.True !transformationDisposed
@@ -52,13 +52,21 @@ let ``successfull no-close`` () =
   do
     use chain = StreamTransformation.chainProducer transformation producer
     use buffer = new MemoryStream ()
-    chain.AsyncProduce buffer |> Async.RunSynchronously
+    Async.RunSynchronously (chain.AsyncProduce buffer, 300)
     Assert.Equal ("test", buffer.ToArray () |> Encoding.UTF8.GetString)
   Assert.True !producerDisposed
   Assert.True !transformationDisposed
 
 [<Fact>]
+[<CompiledName("FailedProduceAfterFirstWrite")>]
 let ``failed produce after first write`` () =
+
+  // if not(System.Diagnostics.Debugger.IsAttached) then
+  //   printfn "Please attach a debugger, PID: %d" (System.Diagnostics.Process.GetCurrentProcess().Id)
+  // while not(System.Diagnostics.Debugger.IsAttached) do
+  //   System.Threading.Thread.Sleep(100)
+  // System.Diagnostics.Debugger.Break()
+
   let producerDisposed = ref false
   let producer =
     { new IStreamProducer with
@@ -76,7 +84,7 @@ let ``failed produce after first write`` () =
   do
     use chain = StreamTransformation.chainProducer transformation producer
     use buffer = new MemoryStream ()
-    Assert.Throws<Exception>(fun () -> chain.AsyncProduce buffer |> Async.RunSynchronously) |> ignore
+    Assert.Throws<Exception>(fun () -> Async.RunSynchronously (chain.AsyncProduce buffer, 300)) |> Assert.IsNotType<TimeoutException>
   Assert.True !producerDisposed
   Assert.True !transformationDisposed
 
@@ -97,7 +105,7 @@ let ``failed produce before first write`` () =
   do
     use chain = StreamTransformation.chainProducer transformation producer
     use buffer = new MemoryStream ()
-    Assert.Throws<Exception>(fun () -> chain.AsyncProduce buffer |> Async.RunSynchronously) |> ignore
+    Assert.Throws<Exception>(fun () -> Async.RunSynchronously (chain.AsyncProduce buffer, 300)) |> Assert.IsNotType<TimeoutException>
   Assert.True !producerDisposed
   Assert.True !transformationDisposed
 
@@ -123,7 +131,7 @@ let ``failed transform after first write`` () =
   do
     use chain = StreamTransformation.chainProducer transformation producer
     use buffer = new MemoryStream ()
-    Assert.Throws<Exception>(fun () -> chain.AsyncProduce buffer |> Async.RunSynchronously) |> ignore
+    Assert.Throws<Exception>(fun () -> Async.RunSynchronously (chain.AsyncProduce buffer, 300)) |> Assert.IsNotType<TimeoutException>
   Assert.True !producerDisposed
   Assert.True !transformationDisposed
 
@@ -147,6 +155,6 @@ let ``failed transform before first write`` () =
   do
     use chain = StreamTransformation.chainProducer transformation producer
     use buffer = new MemoryStream ()
-    Assert.Throws<Exception>(fun () -> chain.AsyncProduce buffer |> Async.RunSynchronously) |> ignore
+    Assert.Throws<Exception>(fun () -> Async.RunSynchronously (chain.AsyncProduce buffer, 300)) |> Assert.IsNotType<TimeoutException>
   Assert.True !producerDisposed
   Assert.True !transformationDisposed

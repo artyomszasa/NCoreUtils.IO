@@ -1,6 +1,7 @@
 namespace NCoreUtils.IO
 
 open System
+open System.Diagnostics.CodeAnalysis
 open System.IO
 open System.IO.Pipes
 open System.Runtime.CompilerServices
@@ -10,85 +11,160 @@ open System.Threading.Tasks
 open NCoreUtils
 open System.Text
 
-type internal WriteNotifyStream (baseStream : Stream, [<Optional>] leaveOpen : bool) =
-  inherit Stream ()
-  let started = Event<EventHandler<_>, EventArgs> ()
-  let mutable debounce = 0
-  [<MethodImpl(MethodImplOptions.AggressiveInlining)>]
-  member private this.Trigger () =
-    if 0 = Interlocked.CompareExchange (&debounce, 1, 0) then
-      started.Trigger (this, EventArgs.Empty)
-  [<CLIEvent>]
-  member __.Started = started.Publish
-  member val BaseStream = baseStream
-  override this.CanRead = this.BaseStream.CanRead
-  override this.CanSeek = this.BaseStream.CanSeek
-  override this.CanTimeout = this.BaseStream.CanTimeout
-  override this.CanWrite = this.BaseStream.CanWrite
-  override this.Length = this.BaseStream.Length
-  override this.Position with get () = this.BaseStream.Position and set value = this.BaseStream.Position <- value
-  override this.ReadTimeout with get () = this.BaseStream.ReadTimeout and set value = this.BaseStream.ReadTimeout <- value
-  override this.WriteTimeout with get () = this.BaseStream.WriteTimeout and set value = this.BaseStream.WriteTimeout <- value
-  override this.BeginRead (buffer, offset, count, callback, state) = this.BaseStream.BeginRead (buffer, offset, count, callback, state)
-  override this.BeginWrite (buffer, offset, count, callback, state) =
-    this.Trigger ()
-    this.BaseStream.BeginWrite (buffer, offset, count, callback, state)
-  override this.Close () = this.BaseStream.Close ()
-  override this.CopyToAsync (destination, bufferSize, cancellationToken) = this.BaseStream.CopyToAsync (destination, bufferSize, cancellationToken)
-  override this.Dispose disposing =
-    if disposing && not leaveOpen then
-      this.BaseStream.Dispose ()
-  override this.EndRead asyncResult = this.BaseStream.EndRead asyncResult
-  override this.EndWrite asyncResult = this.BaseStream.EndWrite asyncResult
-  override this.Flush () =
-    this.Trigger ()
-    this.BaseStream.Flush ()
-  override this.FlushAsync cancellationToken =
-    this.Trigger ()
-    this.BaseStream.FlushAsync cancellationToken
-  override this.Read (buffer, offset, count) = this.BaseStream.Read (buffer, offset, count)
-  override this.ReadAsync (buffer, offset, count, cancellationToken) = this.BaseStream.ReadAsync (buffer, offset, count, cancellationToken)
-  override this.ReadByte () = this.BaseStream.ReadByte ()
-  override this.Seek (offset, origin) = this.BaseStream.Seek (offset, origin)
-  override this.SetLength value = this.BaseStream.SetLength value
-  override this.Write (buffer, offset, count) =
-    this.Trigger ()
-    this.BaseStream.Write (buffer, offset, count)
-  override this.WriteAsync (buffer, offset, count, cancellationToken) =
-    this.Trigger ()
-    this.BaseStream.WriteAsync (buffer, offset, count, cancellationToken)
-  override this.WriteByte value =
-    this.Trigger ()
-    this.BaseStream.WriteByte value
-
 [<AutoOpen>]
-module private ObservableHelpers =
+module internal AsyncExtensions =
 
-  [<CompiledName("AwaitObservable")>]
-  let awaitObservable (observable : IObservable<EventArgs>) =
-    let completionSource = TaskCompletionSource<int> ()
-    let dedup = ref 0
-    let observableSubscription = ref Unchecked.defaultof<IDisposable>
-    let dispose () = observableSubscription.Value.Dispose ()
-    observableSubscription :=
-      observable.Subscribe
-        (fun _ ->
-          if 0 = Interlocked.CompareExchange (dedup, 1, 0) then
-            completionSource.SetResult Unchecked.defaultof<_>
-            dispose ()
-        )
-    async.Bind (
-      Async.CancellationToken,
-      fun cancellationToken -> async {
-        use _ =
-          cancellationToken.Register
-            (fun _ ->
-              if 0 = Interlocked.CompareExchange (dedup, 1, 0) then
-                completionSource.SetCanceled ()
-                dispose ()
-            )
-        do! Async.Adapt (fun _ -> completionSource.Task :> Task) }
-    )
+  type Async with
+    static member StartAsyncWithContinuations (computation, cont, econt, ccont, cancellationToken : CancellationToken) =
+      Task.Factory.StartNew (
+        (fun () -> Async.StartWithContinuations (computation, cont, econt, ccont, cancellationToken)),
+        CancellationToken.None,
+        TaskCreationOptions.DenyChildAttach,
+        TaskScheduler.Current
+      ) |> ignore
+
+    static member FromContinuationsOneShot (callback: (_ -> _) * (exn -> _) * (OperationCanceledException -> _) -> _) =
+      Async.FromContinuations
+        (fun (success, failure, interrupt) ->
+          let dedup = ref 0
+          let cont cont value =
+            if 0 = Interlocked.CompareExchange (dedup, 1, 0) then
+              cont value
+          callback (cont success, cont failure, cont interrupt))
+
+[<RequireQualifiedAccess>]
+[<CompiledName("ObservableExtensions")>]
+module internal Observable =
+
+  type private ReentrantDisposable (source : IDisposable) =
+    let mutable isDisposed = 0
+    interface IDisposable with
+      member __.Dispose () =
+        if 0 = Interlocked.CompareExchange (&isDisposed, 1, 0) then
+          source.Dispose ()
+
+  let private reentrant source = new ReentrantDisposable (source) :> IDisposable
+
+  let inline private dispose (disposable : IDisposable) = disposable.Dispose ()
+
+  let once callback source =
+    let rec callback' item =
+      dispose subscription
+      callback item
+    and subscription = reentrant (Observable.subscribe callback' source)
+    subscription
+
+module private CommonIOHelpers =
+
+  [<Sealed>]
+  type private IOPipe () =
+    let server = new AnonymousPipeServerStream (PipeDirection.Out, HandleInheritability.None)
+    let client = new AnonymousPipeClientStream (PipeDirection.In, server.ClientSafePipeHandle)
+    let producerStream = new WriteNotifyStream (server)
+    let cancellationTokenSource = new CancellationTokenSource ()
+    let mutable consumeSubscription : IDisposable = null
+    let mutable cancellationRegistration : IDisposable = null;
+    let mutable isDisposed = 0
+    member __.Server = producerStream
+    member __.Client = client :> Stream
+    member __.CancellationTokenSource = cancellationTokenSource
+    member __.SetConsumeSubscription value =
+      if 0 <> isDisposed then ObjectDisposedException "IOPipe" |> raise
+      if Interlocked.CompareExchange (&consumeSubscription, value, null) |> isNull |> not then
+        invalidOp "trying to set consume subscription multiple times"
+    member __.SetCancellationRegistration value =
+      if 0 <> isDisposed then ObjectDisposedException "IOPipe" |> raise
+      if Interlocked.CompareExchange (&cancellationRegistration, value, null) |> isNull |> not then
+        invalidOp "trying to set cancellation registration multiple times"
+    interface IDisposable with
+      member __.Dispose () =
+        if 0 = Interlocked.CompareExchange (&isDisposed, 1, 0) then
+          producerStream.Dispose ()
+          client.Dispose ()
+          cancellationTokenSource.Dispose ()
+          match Interlocked.Exchange (&consumeSubscription, null) with
+          | null -> ()
+          | d    -> d.Dispose ()
+          match Interlocked.Exchange (&cancellationRegistration, null) with
+          | null -> ()
+          | d    -> d.Dispose ()
+
+  [<ExcludeFromCodeCoverage>]
+  let inline save box value =
+    box := value
+    value
+
+  let asyncPipe (producer : Stream -> _) (consumer: Stream -> _) = async {
+    use pipe = new IOPipe ()
+    let! cancellationToken = Async.CancellationToken
+    return! Async.FromContinuationsOneShot
+      (fun (success, error, cancelled) ->
+        // -------------------------
+        // triggered if produce operation has finished.
+        let producerDone = Event<unit> ()
+        // triggered if either stream has been written to or produce operation has finished.
+        let startProcessing = Observable.map ignore pipe.Server.Started |> Observable.merge producerDone.Publish
+        // -------------------------
+        // on error --> terminate inner tasks and return error.
+        let onFailure (exn : exn) =
+          pipe.CancellationTokenSource.Cancel ()
+          match exn with
+          | :? OperationCanceledException as exn -> cancelled exn
+          | _    -> error exn
+        // PRODUCER OPERATION ************************************************************************************
+        cancellationToken.Register (ignore >> OperationCanceledException >> onFailure, null)
+          |> pipe.SetCancellationRegistration
+        Async.Start (async {
+          try
+            do! producer pipe.Server
+            producerDone.Trigger ()
+            pipe.Server.Close ()
+          with exn -> onFailure exn
+        }, cancellationToken)
+        // CONSUMER OPERATION ************************************************************************************
+        Observable.once
+          (fun () ->
+            Async.Start (
+              async {
+                try
+                  let! result = consumer pipe.Client
+                  success result
+                with exn -> onFailure exn
+              }, pipe.CancellationTokenSource.Token))
+          startProcessing
+          |> pipe.SetConsumeSubscription
+      )}
+
+[<Sealed>]
+type internal LazyDisposable () =
+  let mutable disposable : IDisposable = null
+  let mutable isDisposed = 0
+  member __.Set value =
+    if 0 <> isDisposed then ObjectDisposedException "LazyDisposable" |> raise
+    if Interlocked.CompareExchange (&disposable, value, null) |> isNull |> not then
+      invalidOp "trying to set lazy disposable multiple times"
+  interface IDisposable with
+    member __.Dispose () =
+      if 0 = Interlocked.CompareExchange (&isDisposed, 1, 0) then
+        match Interlocked.Exchange (&disposable, null) with
+        | null -> ()
+        | d    -> d.Dispose ()
+
+[<Sealed>]
+type private CancellationTokenSourceWrapper () =
+  let mutable isDisposed = 0
+  member __.Disposed = 0 <> isDisposed
+  member val Source = new CancellationTokenSource ()
+  member this.IsCancellationRequested = this.Source.IsCancellationRequested
+  member this.Token = this.Source.Token
+  member this.Cancel () =
+    if not this.Disposed then
+      this.Source.Cancel ()
+  interface IDisposable with
+    member this.Dispose () =
+      if 0 = Interlocked.CompareExchange (&isDisposed, 1, 0) then
+        this.Source.Dispose ()
+
 
 /// Contains operations for asynchronous stream transformations.
 [<Extension>]
@@ -106,44 +182,36 @@ module StreamTransformation =
   [<Extension>]
   [<CompiledName("Chain")>]
   let chain (first : IStreamTransformation) (second : IStreamTransformation) =
-    let server = new AnonymousPipeServerStream (PipeDirection.Out, HandleInheritability.None)
-    let client = new AnonymousPipeClientStream (PipeDirection.In, server.ClientSafePipeHandle)
-    let producer = new WriteNotifyStream (server)
-    let firstFinished = Event<EventHandler<_>, EventArgs> ()
-    let trigger = Observable.merge producer.Started firstFinished.Publish
+    let isDisposed = ref 0
     { new IStreamTransformation with
-        member this.AsyncPerform (input, output) =
-          let start = awaitObservable trigger
-          [ async {
-              try do! first.AsyncPerform (input, producer)
-              finally
-                firstFinished.Trigger (this, EventArgs.Empty)
-                producer.Close () }
-            async {
-              do! start
-              do! second.AsyncPerform (client, output) } ]
-          |> Async.Parallel
-          |> Async.Ignore
+        member __.AsyncPerform (input, output) =
+          CommonIOHelpers.asyncPipe
+            (fun target -> first.AsyncPerform (input, target))
+            (fun source -> second.AsyncPerform (source, output))
         member __.Dispose () =
-          first.Dispose ()
-          second.Dispose ()
-          producer.Dispose ()
-          client.Dispose () }
+          if 0 = Interlocked.CompareExchange (isDisposed, 1, 0) then
+            first.Dispose ()
+            second.Dispose ()
+    }
 
   [<Struct>]
   [<DefaultAugmentation(false)>]
   [<NoEquality; NoComparison>]
   type private SubTransformation =
-    | DoTransform of Input : Stream * Transformation : IStreamTransformation
+    | DoTransform of Output : Stream
     | DoNothing
 
-  [<Struct>]
-  [<DefaultAugmentation(false)>]
-  [<NoEquality; NoComparison>]
-  type private SubTransformationKeepState<'TState> =
-    | DoTransformKeepState of State : 'TState * Input : Stream * Transformation : IStreamTransformation
-    | DoNothingKeepState
+  let inline private disposeSubvo (subvo) =
+    match subvo with
+    | ValueSome (DoTransform stream) -> stream.Dispose ()
+    | _ -> ()
 
+  // [<Struct>]
+  // [<DefaultAugmentation(false)>]
+  // [<NoEquality; NoComparison>]
+  // type private SubTransformationKeepState<'TState> =
+  //   | DoTransformKeepState of State : 'TState * Input : Stream * Transformation : IStreamTransformation
+  //   | DoNothingKeepState
 
   /// <summary>
   /// Creates new asynchronous stream transformation that dynamically evaluates possible second transformation and if
@@ -155,42 +223,86 @@ module StreamTransformation =
   /// <returns>Newly created transformation.</returns>
   [<CompiledName("Chain")>]
   let chainDependent (first : IDependentStreamTransformation<'TState>) (next : 'TState -> IStreamTransformation voption) =
-    let toDispose = ref ([] : IDisposable list)
     { new IStreamTransformation with
+        member __.AsyncPerform (input, output) = async {
+          use cancellationTokenSource = new CancellationTokenSourceWrapper ()
+          use cancellationRegistration = new LazyDisposable ()
+          let! cancellationToken = Async.CancellationToken
+          return!
+            Async.FromContinuationsOneShot
+              (fun (success, error, cancelled) ->
+                let todo = ref ValueNone
+                // handles failures, both in initial and optional dependent transformation
+                let onFailure (exn : exn) =
+                  cancellationTokenSource.Cancel ()
+                  match exn with
+                  | :? OperationCanceledException as exn -> cancelled exn
+                  | _    -> error exn
+                cancellationToken.Register (ignore >> OperationCanceledException >> onFailure, null)
+                  |> cancellationRegistration.Set
+                // starts dependent transformation asynchronously, called only if dependent transformation has been
+                // returned, returns immediately.
+                let startDependent (client : Stream) (transformation : IStreamTransformation) =
+                  match cancellationTokenSource.IsCancellationRequested with
+                  | true ->
+                    transformation.Dispose ()
+                    client.Dispose ()
+                  | _ ->
+                    Async.StartAsyncWithContinuations (
+                      async.Delay (fun () -> transformation.AsyncPerform (client, output)),
+                      (fun () ->
+                        transformation.Dispose ()
+                        client.Dispose ()
+                        success ()),
+                      (fun exn ->
+                        transformation.Dispose ()
+                        client.Dispose ()
+                        onFailure exn),
+                      (fun exn ->
+                        transformation.Dispose ()
+                        client.Dispose ()
+                        onFailure exn),
+                      cancellationTokenSource.Token)
+                // initializes possible further transformation
+                // if no exception has been raised updates todo
+                // - triggers nextStep if further transformation is required
+                let initOutput state =
+                  match next state with
+                  | ValueNone ->
+                    todo := ValueSome DoNothing
+                    output
+                  | ValueSome transformation ->
+                    let server = new AnonymousPipeServerStream (PipeDirection.Out, HandleInheritability.None)
+                    let client = new AnonymousPipeClientStream (PipeDirection.In, server.ClientSafePipeHandle)
+                    todo := ValueSome (DoTransform server)
+                    startDependent client transformation
+                    (server :> Stream)
+                // runs initial transformation, following cases are possible:
+                // - initOutput is called without further transformation --> handled by initOutput
+                // - initOutput is called with further transformation --> handled by initOutput
+                // - initial transformation exited without calling callback --> error
+                // - no further transformation should be performed --> trigger success
+                // - further transformation should be performed --> disposes inernal server stream
+                // - generic error occured while executing initial transformation --> trigger failure
+                Async.StartWithContinuations (
+                  first.AsyncPerform (input, initOutput),
+                  (fun () ->
+                    match !todo with
+                    | ValueNone                      -> invalidOp "dependent transformation should call the callback prior exiting"
+                    | ValueSome  DoNothing           -> success ()
+                    | ValueSome (DoTransform server) -> server.Dispose ()),
+                  (fun (exn) ->
+                    onFailure exn
+                    disposeSubvo !todo),
+                  (fun (exn) ->
+                    onFailure exn
+                    disposeSubvo !todo),
+                  cancellationToken
+                )
+              )
+          }
         member __.Dispose () =
           first.Dispose ()
-          !toDispose |> List.iter (fun disposable -> disposable.Dispose ())
-        member __.AsyncPerform (input, output) =
-          let server = ref Unchecked.defaultof<AnonymousPipeServerStream>
-          let todo = TaskCompletionSource ()
-          let initDependent (second0 : IStreamTransformation voption) =
-            match second0 with
-            | ValueNone ->
-              todo.TrySetResult DoNothing |> ignore
-              output
-            | ValueSome second ->
-              server := new AnonymousPipeServerStream (PipeDirection.Out, HandleInheritability.None)
-              let client = new AnonymousPipeClientStream (PipeDirection.In, server.Value.ClientSafePipeHandle)
-              toDispose := (!server :> _) :: (client :> _) :: (second :> _) :: (!toDispose)
-              todo.TrySetResult <| DoTransform (client, second) |> ignore
-              !server :> _
-          let second = async {
-            match! Async.Adapt (fun _ -> todo.Task) with
-            | DoTransform (input, second) -> do! second.AsyncPerform (input, output)
-            | DoNothing                   -> () }
-          let first = async {
-            try do! first.AsyncPerform (input, next >> initDependent)
-            finally
-              // if callback has never been called
-              todo.TrySetResult DoNothing |> ignore
-              // if callback has been called
-              match !server with
-              | null -> ()
-              | server -> server.Close () }
-          [ first
-            second ]
-          |> Async.Parallel
-          |> Async.Ignore
     }
 
   /// Used to evaluate dependent transformation.
@@ -225,29 +337,17 @@ module StreamTransformation =
   [<Extension>]
   [<CompiledName("Chain")>]
   let chainConsumer (transformation : IStreamTransformation) (consumer : IStreamConsumer) =
-    let server = new AnonymousPipeServerStream (PipeDirection.Out, HandleInheritability.None)
-    let client = new AnonymousPipeClientStream (PipeDirection.In, server.ClientSafePipeHandle)
-    let producer = new WriteNotifyStream (server)
-    let firstFinished = Event<EventHandler<_>, EventArgs> ()
-    let trigger = Observable.merge producer.Started firstFinished.Publish
+    let isDisposed = ref 0
     { new IStreamConsumer with
-        member this.AsyncConsume input =
-          let start = awaitObservable trigger
-          [ async {
-              try do! transformation.AsyncPerform (input, producer)
-              finally
-                firstFinished.Trigger (this, EventArgs.Empty)
-                producer.Close () }
-            async {
-              do! start
-              do! consumer.AsyncConsume client } ]
-          |> Async.Parallel
-          |> Async.Ignore
+        member __.AsyncConsume input =
+          CommonIOHelpers.asyncPipe
+            (fun target -> transformation.AsyncPerform (input, target))
+            consumer.AsyncConsume
         member __.Dispose () =
-          transformation.Dispose ()
-          consumer.Dispose ()
-          producer.Dispose ()
-          client.Dispose () }
+          if 0 = Interlocked.CompareExchange (isDisposed, 1, 0) then
+            transformation.Dispose ()
+            consumer.Dispose ()
+    }
 
   /// <summary>
   /// Creates new asynchronous stream consumer that passes output of the specified transformation to the specified
@@ -259,33 +359,20 @@ module StreamTransformation =
   [<Extension>]
   [<CompiledName("Chain")>]
   let chainToResultConsumer (transformation : IStreamTransformation) (consumer : IStreamConsumer<'T>) =
-    let server = new AnonymousPipeServerStream (PipeDirection.Out, HandleInheritability.None)
-    let client = new AnonymousPipeClientStream (PipeDirection.In, server.ClientSafePipeHandle)
-    let producer = new WriteNotifyStream (server)
-    let firstFinished = Event<EventHandler<_>, EventArgs> ()
-    let trigger = Observable.merge producer.Started firstFinished.Publish
+    let isDisposed = ref 0
     { new IStreamConsumer<_> with
-        member this.AsyncConsume input =
-          let start = awaitObservable trigger
-          let result = ref Unchecked.defaultof<_>
-          let computation =
-            [ async {
-                try do! transformation.AsyncPerform (input, producer)
-                finally
-                  firstFinished.Trigger (this, EventArgs.Empty)
-                  producer.Close () }
-              async {
-                do! start
-                let! res = consumer.AsyncConsume client
-                result := res } ]
-            |> Async.Parallel
-            |> Async.Ignore
-          async.Bind (computation, fun () -> async.Return !result)
+        member __.AsyncConsume input =
+          CommonIOHelpers.asyncPipe
+            (fun target -> transformation.AsyncPerform (input, target))
+            consumer.AsyncConsume
         member __.Dispose () =
-          transformation.Dispose ()
-          consumer.Dispose ()
-          producer.Dispose ()
-          client.Dispose () }
+          if 0 = Interlocked.CompareExchange (isDisposed, 1, 0) then
+            transformation.Dispose ()
+            consumer.Dispose ()
+    }
+
+  [<RequireQualifiedAccess>]
+  type private Status = Pending | Success | Failure of Exception:exn | Cancelled
 
   /// <summary>
   /// Creates new asynchronous stream producer that passes output of the specified producer to the specified
@@ -297,29 +384,17 @@ module StreamTransformation =
   [<Extension>]
   [<CompiledName("Chain")>]
   let chainProducer (transformation : IStreamTransformation) (producer : IStreamProducer) =
-    let server = new AnonymousPipeServerStream (PipeDirection.Out, HandleInheritability.None)
-    let client = new AnonymousPipeClientStream (PipeDirection.In, server.ClientSafePipeHandle)
-    let producerStream = new WriteNotifyStream (server)
-    let firstFinished = Event<EventHandler<_>, EventArgs> ()
-    let trigger = Observable.merge producerStream.Started firstFinished.Publish
+    let isDisposed = ref 0
     { new IStreamProducer with
-        member this.AsyncProduce output =
-          let start = awaitObservable trigger
-          [ async {
-              do! start
-              do! transformation.AsyncPerform (client, output) }
-            async {
-              try do! producer.AsyncProduce producerStream
-              finally
-                firstFinished.Trigger (this, EventArgs.Empty)
-                producerStream.Close () } ]
-          |> Async.Parallel
-          |> Async.Ignore
+        member __.AsyncProduce output =
+          CommonIOHelpers.asyncPipe
+            producer.AsyncProduce
+            (fun source -> transformation.AsyncPerform (source, output))
         member __.Dispose () =
-          transformation.Dispose ()
-          producer.Dispose ()
-          producerStream.Dispose ()
-          client.Dispose () }
+          if 0 = Interlocked.CompareExchange (isDisposed, 1, 0) then
+            transformation.Dispose ()
+            producer.Dispose ()
+    }
 
   /// <summary>
   /// Performs the transformation defined by the specified instance.
@@ -401,29 +476,12 @@ module StreamConsumer =
   /// <param name="consumer">Stream consumer.</param>
   /// <returns>Newly created consumer.</returns>
   [<CompiledName("AsyncConsume")>]
-  let asyncConsumeProducer (streamProducer : IStreamProducer) (consumer : IStreamConsumer) =
-    let server = new AnonymousPipeServerStream (PipeDirection.Out, HandleInheritability.None)
-    let client = new AnonymousPipeClientStream (PipeDirection.In, server.ClientSafePipeHandle)
-    let producer = new WriteNotifyStream (server)
-    let firstFinished = Event<EventHandler<_>, EventArgs> ()
-    let trigger = Observable.merge producer.Started firstFinished.Publish
-    let start = awaitObservable trigger
-    async {
-      try
-        do!
-          [ async {
-              try do! streamProducer.AsyncProduce (producer)
-              finally
-                firstFinished.Trigger (streamProducer, EventArgs.Empty)
-                producer.Close () }
-            async {
-              do! start
-              do! consumer.AsyncConsume client } ]
-          |> Async.Parallel
-          |> Async.Ignore
-      finally
-        server.Dispose ()
-        client.Dispose() }
+  let asyncConsumeProducer (producer : IStreamProducer) (consumer : IStreamConsumer) = async {
+    try
+      do! CommonIOHelpers.asyncPipe producer.AsyncProduce consumer.AsyncConsume
+    finally
+      producer.Dispose ()
+      consumer.Dispose () }
 
 /// Contains operations for asynchronous stream consumers that produces some result.
 [<Extension>]
@@ -449,33 +507,12 @@ module StreamToResultConsumer =
   /// <param name="consumer">Stream consumer.</param>
   /// <returns>Newly created consumer.</returns>
   [<CompiledName("AsyncConsume")>]
-  let asyncConsumeProducer (streamProducer : IStreamProducer) (consumer : IStreamConsumer<'T>) =
-    let server = new AnonymousPipeServerStream (PipeDirection.Out, HandleInheritability.None)
-    let client = new AnonymousPipeClientStream (PipeDirection.In, server.ClientSafePipeHandle)
-    let producer = new WriteNotifyStream (server)
-    let firstFinished = Event<EventHandler<_>, EventArgs> ()
-    let trigger = Observable.merge producer.Started firstFinished.Publish
-    let start = awaitObservable trigger
-    let result = ref Unchecked.defaultof<_>
-    let computation =
-      [ async {
-          try do! streamProducer.AsyncProduce (producer)
-          finally
-            firstFinished.Trigger (streamProducer, EventArgs.Empty)
-            producer.Close () }
-        async {
-          do! start
-          let! res = consumer.AsyncConsume client
-          result := res } ]
-      |> Async.Parallel
-      |> Async.Ignore
-    async {
-      try
-        do! computation
-        return !result
-      finally
-        server.Dispose ()
-        client.Dispose() }
+  let asyncConsumeProducer (producer : IStreamProducer) (consumer : IStreamConsumer<'T>) = async {
+    try
+      return! CommonIOHelpers.asyncPipe producer.AsyncProduce consumer.AsyncConsume
+    finally
+      producer.Dispose ()
+      consumer.Dispose () }
 
 /// Contains operations for asynchronous stream producers.
 [<Extension>]
@@ -510,7 +547,9 @@ module StreamProducer =
   [<CompiledName("FromArray")>]
   let ofArrayPart array offset count  =
     { new IStreamProducer with
-        member __.AsyncProduce output = output.AsyncWrite (array, offset, count)
+        member __.AsyncProduce output = async {
+          do! output.AsyncWrite (array, offset, count)
+          do! output.AsyncFlush () }
         member __.Dispose () = ()
     }
 

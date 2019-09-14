@@ -33,11 +33,13 @@ let ``successfull`` () =
     use buffer = new MemoryStream ()
     StreamTransformation.asyncPerform source buffer chain |> Async.RunSynchronously
     Assert.Equal ("test", buffer.ToArray () |> Encoding.UTF8.GetString)
+  Threading.Thread.SpinWait 100
   Assert.True !transformation1Disposed
   Assert.True !transformation2Disposed
   Assert.True !transformation1HasRun
 
 [<Fact>]
+[<CompiledName("SuccessfullDelegate")>]
 let ``successfull delegate`` () =
   let transformation1Disposed = ref false
   let transformation1HasRun = ref false
@@ -74,6 +76,7 @@ let ``successfull delegate`` () =
     use buffer = new MemoryStream ()
     StreamTransformation.asyncPerform source buffer chain |> Async.RunSynchronously
     Assert.Equal ("test", buffer.ToArray () |> Encoding.UTF8.GetString)
+  Threading.Thread.SpinWait 100
   Assert.True !transformation1Disposed
   Assert.True !transformation2Disposed
   Assert.True !transformation1HasRun
@@ -105,6 +108,7 @@ let ``successfully no-dep`` () =
     use buffer = new MemoryStream ()
     StreamTransformation.asyncPerform source buffer chain |> Async.RunSynchronously
     Assert.Equal ("test", buffer.ToArray () |> Encoding.UTF8.GetString)
+  Threading.Thread.SpinWait 100
   Assert.False !transformation1Disposed
   Assert.True !transformation2Disposed
   Assert.False !transformation1HasRun
@@ -146,13 +150,16 @@ let ``successfull delegate no-dep`` () =
     use buffer = new MemoryStream ()
     StreamTransformation.asyncPerform source buffer chain |> Async.RunSynchronously
     Assert.Equal ("test", buffer.ToArray () |> Encoding.UTF8.GetString)
+  Threading.Thread.SpinWait 100
   Assert.False !transformation1Disposed
   Assert.True !transformation2Disposed
   Assert.False !transformation1HasRun
 
 
 [<Fact>]
+[<CompiledName("FailedOuterAfterWrite")>]
 let ``failed outer after write`` () =
+  // awaitDebugger ()
   let transformation1Disposed = ref false
   let transformation1HasRun = ref false
   let transformation1 =
@@ -177,8 +184,9 @@ let ``failed outer after write`` () =
     use source = new MemoryStream (data, false)
     use buffer = new MemoryStream ()
     Assert.Throws<Exception>(fun () -> StreamTransformation.asyncPerform source buffer chain |> Async.RunSynchronously) |> ignore
-  Assert.True !transformation1Disposed
-  Assert.True !transformation2Disposed
+  Threading.Thread.SpinWait 100
+  Assert.True (!transformation1Disposed, "inner transformation has not been disposed")
+  Assert.True (!transformation2Disposed, "initial transformation has not been disposed")
 
 [<Fact>]
 let ``failed outer before write`` () =
@@ -205,8 +213,9 @@ let ``failed outer before write`` () =
     use source = new MemoryStream (data, false)
     use buffer = new MemoryStream ()
     Assert.Throws<Exception>(fun () -> StreamTransformation.asyncPerform source buffer chain |> Async.RunSynchronously) |> ignore
-  Assert.True !transformation1Disposed
-  Assert.True !transformation2Disposed
+  Threading.Thread.SpinWait 100
+  Assert.True (!transformation1Disposed, "inner transformation has not been disposed")
+  Assert.True (!transformation2Disposed, "initial transformation has not been disposed")
 
 [<Fact>]
 let ``failed inner after write`` () =
@@ -233,11 +242,14 @@ let ``failed inner after write`` () =
     use source = new MemoryStream (data, false)
     use buffer = new MemoryStream ()
     Assert.Throws<Exception>(fun () -> StreamTransformation.asyncPerform source buffer chain |> Async.RunSynchronously) |> ignore
+  Threading.Thread.SpinWait 100
   Assert.True !transformation1Disposed
   Assert.True !transformation2Disposed
 
 [<Fact>]
+[<CompiledName("FailedInnerBeforeWrite")>]
 let ``failed inner before write`` () =
+  // awaitDebugger ()
   let transformation1Disposed = ref false
   let transformation1 =
     { new IStreamTransformation with
@@ -257,5 +269,6 @@ let ``failed inner before write`` () =
     use source = new MemoryStream (data, false)
     use buffer = new MemoryStream ()
     Assert.Throws<Exception>(fun () -> StreamTransformation.asyncPerform source buffer chain |> Async.RunSynchronously) |> ignore
+  Threading.Thread.SpinWait 100
   Assert.True !transformation1Disposed
   Assert.True !transformation2Disposed

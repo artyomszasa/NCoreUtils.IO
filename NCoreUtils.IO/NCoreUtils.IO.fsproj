@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFrameworks>netstandard2.0;netstandard2.1;net452</TargetFrameworks>
-    <Version>3.0.0-preview8.1</Version>
+    <Version>3.0.0-preview8.2</Version>
     <!-- NuGet -->
     <PackageId>NCoreUtils.IO</PackageId>
     <Title>$(PackageId)</Title>
@@ -22,7 +22,9 @@
     <NoWarn>2003;NU5105</NoWarn>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="AssemblyInfo.fs" />
     <Compile Include="MultiplexingConsumer.fs" />
+    <Compile Include="WriteNotifyStream.fs" />
     <Compile Include="StreamTransformation.fs" />
   </ItemGroup>
   <ItemGroup>

@@ -35,6 +35,72 @@ let ``successfull`` () =
   Assert.True !transformationDisposed
 
 [<Fact>]
+[<CompiledName("TransformationCancelled")>]
+let ``transformation cancelled`` () =
+  let transformationDisposed = ref false
+  let transformation =
+    { new IStreamTransformation with
+        member __.AsyncPerform (input, output) = async {
+          do! Async.Sleep 1000
+          do! Stream.asyncCopyTo output input
+          output.Close () }
+        member __.Dispose () = transformationDisposed := true
+    }
+  let consumerDisposed = ref false
+  let consumer =
+    { new IStreamConsumer with
+        member __.AsyncConsume input = async {
+          use buffer = new MemoryStream ()
+          do! Stream.asyncCopyTo buffer input
+          Assert.Equal ("test", buffer.ToArray () |> Encoding.UTF8.GetString) }
+        member __.Dispose () = consumerDisposed := true
+    }
+  do
+    use chain = StreamTransformation.chainConsumer transformation consumer
+    use buffer = new MemoryStream (data, false)
+    use cancellationTokenSource = new Threading.CancellationTokenSource ()
+    let task = Async.StartAsTask (StreamConsumer.asyncConsume buffer chain, cancellationToken = cancellationTokenSource.Token)
+    Threading.Thread.SpinWait 10
+    cancellationTokenSource.Cancel ()
+    let aexn = Assert.Throws<AggregateException> (Action task.Wait)
+    Assert.Single aexn.InnerExceptions |> Assert.IsAssignableFrom<OperationCanceledException> |> ignore
+  Assert.True !consumerDisposed
+  Assert.True !transformationDisposed
+
+[<Fact>]
+[<CompiledName("ConsumerCancelled")>]
+let ``consumer cancelled`` () =
+  let transformationDisposed = ref false
+  let transformation =
+    { new IStreamTransformation with
+        member __.AsyncPerform (input, output) = async {
+          do! Stream.asyncCopyTo output input
+          output.Close () }
+        member __.Dispose () = transformationDisposed := true
+    }
+  let consumerDisposed = ref false
+  let consumer =
+    { new IStreamConsumer with
+        member __.AsyncConsume input = async {
+          use buffer = new MemoryStream ()
+          do! Stream.asyncCopyTo buffer input
+          do! Async.Sleep 1000
+          Assert.Equal ("test", buffer.ToArray () |> Encoding.UTF8.GetString) }
+        member __.Dispose () = consumerDisposed := true
+    }
+  do
+    use chain = StreamTransformation.chainConsumer transformation consumer
+    use buffer = new MemoryStream (data, false)
+    use cancellationTokenSource = new Threading.CancellationTokenSource ()
+    let task = Async.StartAsTask (StreamConsumer.asyncConsume buffer chain, cancellationToken = cancellationTokenSource.Token)
+    Threading.Thread.SpinWait 10
+    cancellationTokenSource.Cancel ()
+    let aexn = Assert.Throws<AggregateException> (Action task.Wait)
+    Assert.Single aexn.InnerExceptions |> Assert.IsAssignableFrom<OperationCanceledException> |> ignore
+  Assert.True !consumerDisposed
+  Assert.True !transformationDisposed
+
+[<Fact>]
 let ``successfull to result`` () =
   let transformationDisposed = ref false
   let transformation =
