@@ -8,6 +8,11 @@ namespace NCoreUtils.IO
 {
     public static class PipeStreamer
     {
+        sealed class Box<T>
+        {
+            public T Value { get; set; } = default!;
+        }
+
         sealed class PipeWriterWrapper : PipeWriter
         {
             readonly Action _callback;
@@ -145,6 +150,73 @@ namespace NCoreUtils.IO
                     consumer: (input, cancellationToken) => _second.PerformAsync(input, output, cancellationToken),
                     cancellationToken: cancellationToken
                 ));
+        }
+
+        sealed class ChainedConsumer : IStreamConsumer
+        {
+            readonly IStreamTransformation _transformation;
+
+            readonly IStreamConsumer _consumer;
+
+            public ChainedConsumer(IStreamTransformation transformation, IStreamConsumer consumer)
+            {
+                _transformation = transformation ?? throw new ArgumentNullException(nameof(transformation));
+                _consumer = consumer ?? throw new ArgumentNullException(nameof(consumer));
+            }
+
+            public ValueTask ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
+                => new ValueTask(StreamAsync(
+                    producer: (output, cancellationToken) => _transformation.PerformAsync(input, output, cancellationToken),
+                    consumer: (input, cancellationToken) => _consumer.ConsumeAsync(input, cancellationToken),
+                    cancellationToken: cancellationToken
+                ));
+
+            public async ValueTask DisposeAsync()
+            {
+                await _transformation.ConfigureAwait(false).DisposeAsync();
+                await _consumer.ConfigureAwait(false).DisposeAsync();
+            }
+        }
+
+        sealed class ChainedConsumer<T> : IStreamConsumer<T>
+        {
+            readonly IStreamTransformation _transformation;
+
+            readonly IStreamConsumer<T> _consumer;
+
+            public ChainedConsumer(IStreamTransformation transformation, IStreamConsumer<T> consumer)
+            {
+                _transformation = transformation ?? throw new ArgumentNullException(nameof(transformation));
+                _consumer = consumer ?? throw new ArgumentNullException(nameof(consumer));
+            }
+
+            public ValueTask<T> ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
+            {
+                var result = new Box<T>();
+                var consumer = _consumer.Bind(value => result.Value = value);
+                var task = StreamAsync(
+                    producer: (output, cancellationToken) => _transformation.PerformAsync(input, output, cancellationToken),
+                    consumer: (input, cancellationToken) => consumer.ConsumeAsync(input, cancellationToken),
+                    cancellationToken: cancellationToken
+                );
+                if (task.IsCompleted && !task.IsFaulted && !task.IsCanceled)
+                {
+                    return new ValueTask<T>(result.Value);
+                }
+                return FinishConsumeAsync(task, result);
+
+                static async ValueTask<T> FinishConsumeAsync(Task task, Box<T> result)
+                {
+                    await task.ConfigureAwait(false);
+                    return result.Value;
+                }
+            }
+
+            public async ValueTask DisposeAsync()
+            {
+                await _transformation.ConfigureAwait(false).DisposeAsync();
+                await _consumer.ConfigureAwait(false).DisposeAsync();
+            }
         }
 
         [Flags]
@@ -432,6 +504,12 @@ namespace NCoreUtils.IO
 
         public static IStreamTransformation Chain(this IStreamTransformation first, IStreamTransformation second)
             => new ChainedTransformation(first, second);
+
+        public static IStreamConsumer Chain(this IStreamConsumer consumer, IStreamTransformation transformation)
+            => new ChainedConsumer(transformation, consumer);
+
+        public static IStreamConsumer<T> Chain<T>(this IStreamConsumer<T> consumer, IStreamTransformation transformation)
+            => new ChainedConsumer<T>(transformation, consumer);
 
     }
 }
