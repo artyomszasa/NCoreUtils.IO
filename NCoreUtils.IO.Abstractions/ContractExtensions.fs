@@ -7,6 +7,48 @@ open System.Runtime.InteropServices
 open System.Threading.Tasks
 open NCoreUtils
 
+type private DelayedStreamConsumer (factory: unit -> Async<IStreamConsumer>) =
+  let mutable consumer = ValueNone
+  interface IStreamConsumer with
+    member __.AsyncConsume input = async {
+      // TODO: handle reentrance
+      let! instance = factory ()
+      consumer <- ValueSome instance
+      do! instance.AsyncConsume input }
+    member __.Dispose () =
+      match consumer with
+      | ValueSome instance -> instance.Dispose ()
+      | _                  -> ()
+
+type private DelayedStreamToResultConsumer<'T> (factory: unit -> Async<IStreamConsumer<'T>>) =
+  let mutable consumer = ValueNone
+  interface IStreamConsumer<'T> with
+    member __.AsyncConsume input = async {
+      // TODO: handle reentrance
+      let! instance = factory ()
+      consumer <- ValueSome instance
+      return! instance.AsyncConsume input }
+    member __.Dispose () =
+      match consumer with
+      | ValueSome instance -> instance.Dispose ()
+      | _                  -> ()
+
+
+type private DelayedStreamProducer (factory: unit -> Async<IStreamProducer>) =
+  let mutable producer = ValueNone
+  interface IStreamProducer with
+    member __.AsyncProduce output = async {
+      // TODO: handle reentrance
+      let! instance = factory ()
+      producer <- ValueSome instance
+      do! instance.AsyncProduce output }
+    member __.Dispose () =
+      match producer with
+      | ValueSome instance -> instance.Dispose ()
+      | _                  -> ()
+
+
+
 /// Constains methods to create asynchronous stream transformations.
 [<Sealed; AbstractClass>]
 type StreamTransformation =
@@ -44,6 +86,9 @@ type StreamTransformation =
 [<Sealed; AbstractClass>]
 type StreamConsumer =
 
+  static member Delay (factory: unit -> Async<IStreamConsumer>) =
+    new DelayedStreamConsumer (factory) :> IStreamConsumer
+
   /// <summary>
   /// Initializes asynchronous stream consumer from the specified parameters.
   /// </summary>
@@ -74,6 +119,9 @@ type StreamConsumer =
 /// Constains methods to create asynchronous stream consumers.
 [<Sealed; AbstractClass>]
 type StreamToResultConsumer =
+
+  static member Delay (factory: unit -> Async<IStreamConsumer<_>>) =
+    new DelayedStreamToResultConsumer<_> (factory) :> IStreamConsumer<_>
 
   /// <summary>
   /// Initializes asynchronous stream consumer from the specified parameters.
@@ -152,6 +200,9 @@ type DependentStreamTransformation =
 // Constains methods to create asynchronous stream producers.
 [<Sealed; AbstractClass>]
 type StreamProducer =
+
+  static member Delay (factory: unit -> Async<IStreamProducer>) =
+    new DelayedStreamProducer (factory) :> IStreamProducer
 
   /// <summary>
   /// Initializes asynchronous stream producer from the specified parameters.
