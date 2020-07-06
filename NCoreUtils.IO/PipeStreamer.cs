@@ -489,7 +489,7 @@ namespace NCoreUtils.IO
         {
             try
             {
-                T result = default;
+                T result = default!;
                 await StreamAsync(producer.ProduceAsync, consumer.Bind(v => result = v).ConsumeAsync, cancellationToken).ConfigureAwait(false);
                 return result!;
             }

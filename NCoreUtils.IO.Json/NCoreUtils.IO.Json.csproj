@@ -6,10 +6,10 @@
     <RootNamespace>NCoreUtils.IO</RootNamespace>
     <Version>3.1.0</Version>
     <!-- NuGet -->
-    <PackageId>NCoreUtils.IO.Abstractions</PackageId>
+    <PackageId>NCoreUtils.IO.Json</PackageId>
     <Title>$(PackageId)</Title>
     <Authors>Artyom Antyipin</Authors>
-    <Description>Stream manipulation abstractions.</Description>
+    <Description>Json producer/consumer for stream manipulation library.</Description>
     <Copyright>Artyom Antyipin</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/artyomszasa/NCoreUtils.IO.git</RepositoryUrl>
@@ -33,9 +33,10 @@
     <EnableFrameworkPathOverride Condition="'$(BaseFrameworkPathOverrideForMono)' != ''">true</EnableFrameworkPathOverride>
     <AssemblySearchPaths Condition="'$(BaseFrameworkPathOverrideForMono)' != ''">$(FrameworkPathOverride)/Facades;$(AssemblySearchPaths)</AssemblySearchPaths>
   </PropertyGroup>
-  <ItemGroup Condition=" '$(TargetFramework)' != 'netstandard2.1' ">
-    <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="1.1.1" />
-    <PackageReference Include="NCoreUtils.Backports" Version="3.1.0" />
-    <PackageReference Include="System.Memory" Version="4.5.4" />
+  <ItemGroup>
+    <ProjectReference Include="..\NCoreUtils.IO.Abstractions\NCoreUtils.IO.Abstractions.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" Version="4.7.2" />
   </ItemGroup>
 </Project>

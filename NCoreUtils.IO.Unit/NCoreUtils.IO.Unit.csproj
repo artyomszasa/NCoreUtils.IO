@@ -19,6 +19,35 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\NCoreUtils.IO\NCoreUtils.IO.csproj" />
+    <ProjectReference Include="..\NCoreUtils.IO.Json\NCoreUtils.IO.Json.csproj" />
   </ItemGroup>
-
+  <!-- **** -->
+  <ItemGroup>
+    <PackageReference Include="ReportGenerator" Version="4.5.3">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.msbuild" Version="2.8.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <Target Name="BeforeRunCoverageTests">
+    <PropertyGroup>
+      <CollectCoverage>true</CollectCoverage>
+      <CoverletOutputFormat>opencover</CoverletOutputFormat>
+      <CoverletOutput>$([System.IO.Path]::Combine($(MSBuildProjectDirectory), "coverage.opencover.xml"))</CoverletOutput>
+      <Threshold>0</Threshold>
+      <ThresholdType>line</ThresholdType>
+      <ThresholdStat>total</ThresholdStat>
+    </PropertyGroup>
+  </Target>
+  <Target Name="GenerateReport">
+    <Message Text="Generating report for $(CoverletOutput)" Importance="high" />
+    <ReportGenerator ReportFiles="$(CoverletOutput)" TargetDirectory="report" ReportTypes="Html" VerbosityLevel="Verbose" />
+  </Target>
+  <Target Name="RunCoverageTests" DependsOnTargets="BeforeRunCoverageTests">
+    <CallTarget Targets="VSTest" />
+    <MSBuild Projects="$(MSBuildProjectFile)" Targets="GenerateReport" Properties="TargetFramework=$(TargetFramework);CoverletOutput=$(CoverletOutput)" />
+  </Target>
 </Project>

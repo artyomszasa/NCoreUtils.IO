@@ -4,3 +4,5 @@
 
 NCoreUtils*/obj
 NCoreUtils*/bin
+NCoreUtils*Unit/report/
+NCoreUtils*Unit/coverage*.xml
