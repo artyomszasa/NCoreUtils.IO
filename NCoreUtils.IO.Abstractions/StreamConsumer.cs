@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,18 +13,32 @@ namespace NCoreUtils.IO
         {
             readonly int _bufferSize;
 
+            readonly bool _leaveOpen;
+
             public Stream Target { get; }
 
-            public StreamCopyConsumer(Stream target, int bufferSize)
+            public StreamCopyConsumer(Stream target, int bufferSize, bool leaveOpen = false)
             {
                 Target = target ?? throw new ArgumentNullException(nameof(target));
                 _bufferSize = bufferSize;
+                _leaveOpen = leaveOpen;
             }
 
-            public ValueTask ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
-                => new ValueTask(input.CopyToAsync(Target, _bufferSize, cancellationToken));
+            public async ValueTask ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
+            {
+                await input.CopyToAsync(Target, _bufferSize, cancellationToken);
+                await Target.FlushAsync(CancellationToken.None);
+            }
 
-            public ValueTask DisposeAsync() => default;
+            public ValueTask DisposeAsync()
+            {
+                #if NETSTANDARD2_1
+                return Target.DisposeAsync();
+                #else
+                Target.Dispose();
+                return default;
+                #endif
+            }
         }
 
         sealed class StreamToArrayConsumer : IStreamConsumer<byte[]>
@@ -137,8 +152,13 @@ namespace NCoreUtils.IO
         public static IStreamConsumer Delay(Func<CancellationToken, ValueTask<IStreamConsumer>> factory)
             => new DelayedStreamConsumer(factory);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static IStreamConsumer ToStream(Stream target, int copyBufferSize, bool leaveOpen = false)
+            => new StreamCopyConsumer(target, copyBufferSize, leaveOpen);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static IStreamConsumer ToStream(Stream target, int copyBufferSize = DefaultBufferSize)
-            => new StreamCopyConsumer(target, copyBufferSize);
+            => ToStream(target, copyBufferSize, false);
 
         public static IStreamConsumer<byte[]> ToArray(int copyBufferSize = DefaultBufferSize)
             => new StreamToArrayConsumer(copyBufferSize);
