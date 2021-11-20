@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -9,23 +10,24 @@ namespace NCoreUtils.IO
     {
         sealed class InlineStreamTransformation : IStreamTransformation
         {
-            readonly Func<Stream, Stream, CancellationToken, ValueTask> _transformation;
+            private Func<Stream, Stream, CancellationToken, ValueTask> TransformFun { get; }
 
-            readonly Func<ValueTask>? _dispose;
+            private Func<ValueTask>? DisposeFun { get; }
 
             public InlineStreamTransformation(Func<Stream, Stream, CancellationToken, ValueTask> transform, Func<ValueTask>? dispose)
             {
-                _transformation = transform ?? throw new ArgumentNullException(nameof(transform));
-                _dispose = dispose;
+                TransformFun = transform ?? throw new ArgumentNullException(nameof(transform));
+                DisposeFun = dispose;
             }
 
             public ValueTask DisposeAsync()
-                => _dispose?.Invoke() ?? default;
+                => DisposeFun?.Invoke() ?? default;
 
             public ValueTask PerformAsync(Stream input, Stream output, CancellationToken cancellationToken = default)
-                => _transformation(input, output, cancellationToken);
+                => TransformFun(input, output, cancellationToken);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static IStreamTransformation Create(Func<Stream, Stream, CancellationToken, ValueTask> transform, Func<ValueTask>? dispose = default)
             => new InlineStreamTransformation(transform, dispose);
     }

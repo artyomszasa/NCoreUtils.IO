@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,80 +9,110 @@ namespace NCoreUtils.IO
 {
     public static class StreamProducer
     {
-        sealed class StreamCopyProducer : IStreamProducer
+        private sealed class StreamCopyProducer : IStreamProducer
         {
-            readonly bool _leaveOpen;
+            public bool LeaveOpen { get; }
 
-            readonly int _bufferSize;
+            public int BufferSize { get; }
 
             public Stream Source { get; }
 
             public StreamCopyProducer(Stream source, int bufferSize, bool leaveOpen)
             {
                 Source = source ?? throw new ArgumentNullException(nameof(source));
-                _bufferSize = bufferSize;
-                _leaveOpen = leaveOpen;
+                BufferSize = bufferSize;
+                LeaveOpen = leaveOpen;
             }
 
             public ValueTask ProduceAsync(Stream output, CancellationToken cancellationToken = default)
-                => new ValueTask(Source.CopyToAsync(output, _bufferSize, cancellationToken));
+                => new ValueTask(Source.CopyToAsync(output, BufferSize, cancellationToken));
 
             public ValueTask DisposeAsync()
             {
-                if (!_leaveOpen)
+                if (!LeaveOpen)
                 {
+                    #if NETFRAMEWORK
                     Source.Dispose();
+                    return default;
+                    #else
+                    return Source.DisposeAsync();
+                    #endif
                 }
                 return default;
             }
         }
 
-        sealed class InlineStreamProducer : IStreamProducer
+        private sealed class InlineStreamProducer : IStreamProducer
         {
-            readonly Func<Stream, CancellationToken, ValueTask> _produce;
+            private Func<Stream, CancellationToken, ValueTask> ProducerFun { get; }
 
-            readonly Func<ValueTask>? _dispose;
+            private Func<ValueTask>? DisposeFun { get; }
 
             public InlineStreamProducer(Func<Stream, CancellationToken, ValueTask> produce, Func<ValueTask>? dispose)
             {
-                _produce = produce ?? throw new ArgumentNullException(nameof(produce));
-                _dispose = dispose;
+                ProducerFun = produce ?? throw new ArgumentNullException(nameof(produce));
+                DisposeFun = dispose;
             }
 
             public ValueTask DisposeAsync()
-                => _dispose?.Invoke() ?? default;
+                => DisposeFun?.Invoke() ?? default;
 
             public ValueTask ProduceAsync(Stream output, CancellationToken cancellationToken = default)
-                => _produce(output, cancellationToken);
+                => ProducerFun(output, cancellationToken);
         }
 
-        private sealed class ReadOnlyMemoryProducer : IStreamProducer
+        private sealed class FromStringProducer : IStreamProducer
         {
-            private readonly ReadOnlyMemory<byte> _buffer;
+            public string Source { get; }
 
-            public ReadOnlyMemoryProducer(ReadOnlyMemory<byte> buffer)
-                => _buffer = buffer;
+            public Encoding Encoding { get; }
+
+            public int BufferSize { get; }
+
+            public FromStringProducer(Encoding encoding, string source, int bufferSize)
+            {
+                Source = source ?? throw new ArgumentNullException(nameof(source));
+                Encoding = encoding ?? throw new ArgumentNullException(nameof(encoding));
+                BufferSize = bufferSize;
+            }
+
+            public async ValueTask ProduceAsync(Stream output, CancellationToken cancellationToken = default)
+            {
+                using var writer = new StreamWriter(output, Encoding, BufferSize, true);
+                await writer.WriteAsync(Source);
+            }
+
+            public ValueTask DisposeAsync()
+                => default;
+        }
+
+        private sealed class FromReadOnlyMemoryProducer : IStreamProducer
+        {
+            private ReadOnlyMemory<byte> Buffer { get; }
+
+            public FromReadOnlyMemoryProducer(ReadOnlyMemory<byte> buffer)
+                => Buffer = buffer;
 
             public ValueTask DisposeAsync()
                 => default;
 
             public ValueTask ProduceAsync(Stream output, CancellationToken cancellationToken = default)
-                => output.WriteAsync(_buffer, cancellationToken);
+                => output.WriteAsync(Buffer, cancellationToken);
         }
 
         private sealed class DelayedStreamProducer : IStreamProducer
         {
-            private readonly Func<CancellationToken, ValueTask<IStreamProducer>> _factory;
+            private Func<CancellationToken, ValueTask<IStreamProducer>> Factory { get; }
 
             public DelayedStreamProducer(Func<CancellationToken, ValueTask<IStreamProducer>> factory)
-                => _factory = factory ?? throw new ArgumentNullException(nameof(factory));
+                => Factory = factory ?? throw new ArgumentNullException(nameof(factory));
 
             public ValueTask DisposeAsync()
                 => default;
 
             public async ValueTask ProduceAsync(Stream output, CancellationToken cancellationToken = default)
             {
-                await using var producer = await _factory(cancellationToken);
+                await using var producer = await Factory(cancellationToken);
                 await producer.ProduceAsync(output, cancellationToken);
             }
         }
@@ -90,34 +121,50 @@ namespace NCoreUtils.IO
 
         public static Encoding DefaultEncoding { get; } = new UTF8Encoding(false);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static IStreamProducer Create(Func<Stream, CancellationToken, ValueTask> produce, Func<ValueTask>? dispose = default)
             => new InlineStreamProducer(produce, dispose);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static IStreamProducer Delay(Func<CancellationToken, ValueTask<IStreamProducer>> factory)
             => new DelayedStreamProducer(factory);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static IStreamProducer FromStream(Stream source, int copyBufferSize = DefaultBufferSize, bool leaveOpen = false)
             => new StreamCopyProducer(source, copyBufferSize, leaveOpen);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static IStreamProducer FromMemory(ReadOnlyMemory<byte> buffer)
-            => new ReadOnlyMemoryProducer(buffer);
+            => new FromReadOnlyMemoryProducer(buffer);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static IStreamProducer FromArray(byte[] data, int copyBufferSize = DefaultBufferSize)
         {
             if (data is null)
             {
                 throw new ArgumentNullException(nameof(data));
             }
-            return FromStream(new MemoryStream(data, 0, data.Length, false, true), copyBufferSize);
+            return FromArray(data, 0, data.Length, copyBufferSize);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static IStreamProducer FromArray(byte[] data, int index, int count, int copyBufferSize = DefaultBufferSize)
+        {
+            if (data is null)
+            {
+                throw new ArgumentNullException(nameof(data));
+            }
+            return FromStream(new MemoryStream(data, index, count, false, true), copyBufferSize);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static IStreamProducer FromString(string input, Encoding? encoding = default, int copyBufferSize = DefaultBufferSize)
         {
             if (input is null)
             {
                 throw new ArgumentNullException(nameof(input));
             }
-            return FromArray((encoding ?? DefaultEncoding).GetBytes(input), copyBufferSize);
+            return new FromStringProducer(encoding ?? DefaultEncoding, input, copyBufferSize);
         }
     }
 }

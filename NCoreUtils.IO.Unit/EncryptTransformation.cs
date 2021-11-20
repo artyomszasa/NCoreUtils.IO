@@ -36,6 +36,7 @@ namespace NCoreUtils.IO
             catch (Exception exn)
             {
                 Error = exn;
+                throw;
             }
             finally
             {

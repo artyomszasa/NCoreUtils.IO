@@ -1,10 +1,22 @@
 using System;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace NCoreUtils.IO
 {
     public class ArgumentValidationTests
     {
+        private sealed class DummyTransformation : IStreamTransformation
+        {
+            public ValueTask DisposeAsync()
+                => default;
+
+            public ValueTask PerformAsync(Stream input, Stream output, CancellationToken cancellationToken = default)
+                => new ValueTask(input.CopyToAsync(output, -1, cancellationToken));
+        }
+
         [Fact]
         public void Consumer()
         {
@@ -23,6 +35,24 @@ namespace NCoreUtils.IO
             Assert.Equal("produce", Assert.Throws<ArgumentNullException>(() => StreamProducer.Create(default!)).ParamName);
             Assert.Equal("factory", Assert.Throws<ArgumentNullException>(() => StreamProducer.Delay(default!)).ParamName);
             Assert.Equal("valueType", Assert.Throws<ArgumentNullException>(() => new JsonStreamProducer(default, default!)).ParamName);
+        }
+
+        [Fact]
+        public void Streamer()
+        {
+            Assert.Equal("consumer", Assert.Throws<ArgumentNullException>(() => PipeStreamer.Bind<int>(default!, _ => { })).ParamName);
+            Assert.Equal("store", Assert.Throws<ArgumentNullException>(() => PipeStreamer.Bind<int>(new JsonStreamConsumer<int>(), default!)).ParamName);
+            Assert.Equal("producer", Assert.Throws<ArgumentNullException>(() => PipeStreamer.Chain(default(IStreamProducer)!, new DummyTransformation())).ParamName);
+            Assert.Equal("transformation", Assert.Throws<ArgumentNullException>(() => PipeStreamer.Chain(StreamProducer.FromString(string.Empty), default!)).ParamName);
+            Assert.Equal("first", Assert.Throws<ArgumentNullException>(() => PipeStreamer.Chain(default(IStreamTransformation)!, new DummyTransformation())).ParamName);
+            Assert.Equal("second", Assert.Throws<ArgumentNullException>(() => PipeStreamer.Chain(new DummyTransformation(), default!)).ParamName);
+            Assert.Equal("consumer", Assert.Throws<ArgumentNullException>(() => PipeStreamer.Chain(default(IStreamConsumer)!, new DummyTransformation())).ParamName);
+            Assert.Equal("transformation", Assert.Throws<ArgumentNullException>(() => PipeStreamer.Chain(StreamConsumer.ToStream(new MemoryStream()), default!)).ParamName);
+            Assert.Equal("consumer", Assert.Throws<ArgumentNullException>(() => PipeStreamer.Chain(default(IStreamConsumer<string>)!, new DummyTransformation())).ParamName);
+            Assert.Equal("transformation", Assert.Throws<ArgumentNullException>(() => PipeStreamer.Chain(StreamConsumer.ToString(), default!)).ParamName);
+
+            Assert.Equal("producer", Assert.ThrowsAsync<ArgumentNullException>(() => PipeStreamer.StreamAsync(default!, StreamConsumer.ToStream(new MemoryStream())).AsTask()).Result.ParamName);
+            Assert.Equal("consumer", Assert.ThrowsAsync<ArgumentNullException>(() => PipeStreamer.StreamAsync(StreamProducer.FromString(string.Empty), default!).AsTask()).Result.ParamName);
         }
     }
 }

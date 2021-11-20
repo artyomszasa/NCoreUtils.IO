@@ -6,7 +6,7 @@ namespace NCoreUtils.IO
 {
     public static class StreamConsumerExtensions
     {
-        public static async Task<string> ToStringAsync(
+        public static async ValueTask<string> ToStringAsync(
             this IStreamProducer producer,
             Encoding? encoding = default,
             int copyBufferSize = StreamConsumer.DefaultBufferSize,
@@ -16,7 +16,7 @@ namespace NCoreUtils.IO
             return await producer.ConsumeAsync(consumer).ConfigureAwait(false);
         }
 
-        public static async Task<byte[]> ToArrayAsync(
+        public static async ValueTask<byte[]> ToArrayAsync(
             this IStreamProducer producer,
             int copyBufferSize = StreamConsumer.DefaultBufferSize,
             CancellationToken cancellationToken = default)

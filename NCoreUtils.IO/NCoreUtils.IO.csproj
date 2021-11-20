@@ -1,10 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>netstandard2.0;netstandard2.1;net461</TargetFrameworks>
-    <LangVersion>8.0</LangVersion>
-    <Nullable>enable</Nullable>
+    <TargetFrameworks>net6;netstandard2.1;net461</TargetFrameworks>
     <RootNamespace>NCoreUtils.IO</RootNamespace>
-    <Version>3.1.0.1</Version>
     <!-- NuGet -->
     <PackageId>NCoreUtils.IO</PackageId>
     <Title>$(PackageId)</Title>
@@ -37,6 +34,6 @@
     <ProjectReference Include="..\NCoreUtils.IO.Abstractions\NCoreUtils.IO.Abstractions.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="System.IO.Pipelines" Version="4.7.2" />
+    <PackageReference Include="System.IO.Pipelines" Version="6.0.0" />
   </ItemGroup>
 </Project>

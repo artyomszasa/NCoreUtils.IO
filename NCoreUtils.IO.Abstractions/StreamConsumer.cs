@@ -9,146 +9,151 @@ namespace NCoreUtils.IO
 {
     public static class StreamConsumer
     {
-        sealed class StreamCopyConsumer : IStreamConsumer
+        private sealed class StreamCopyConsumer : IStreamConsumer
         {
-            readonly int _bufferSize;
+            public int BufferSize { get; }
 
-            readonly bool _leaveOpen;
+            public bool LeaveOpen { get; }
 
             public Stream Target { get; }
 
             public StreamCopyConsumer(Stream target, int bufferSize, bool leaveOpen = false)
             {
                 Target = target ?? throw new ArgumentNullException(nameof(target));
-                _bufferSize = bufferSize;
-                _leaveOpen = leaveOpen;
+                BufferSize = bufferSize;
+                LeaveOpen = leaveOpen;
             }
 
             public async ValueTask ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
             {
-                await input.CopyToAsync(Target, _bufferSize, cancellationToken);
-                await Target.FlushAsync(CancellationToken.None);
+                await input.CopyToAsync(Target, BufferSize, cancellationToken);
             }
 
             public ValueTask DisposeAsync()
             {
-                #if NETSTANDARD2_1
-                return Target.DisposeAsync();
-                #else
-                Target.Dispose();
+                if (!LeaveOpen)
+                {
+                    #if NETFRAMEWORK
+                    Target.Dispose();
+                    return default;
+                    #else
+                    return Target.DisposeAsync();
+                    #endif
+                }
                 return default;
-                #endif
             }
         }
 
-        sealed class StreamToArrayConsumer : IStreamConsumer<byte[]>
+        private sealed class StreamToArrayConsumer : IStreamConsumer<byte[]>
         {
-            readonly int _bufferSize;
+            public int BufferSize { get; }
 
             public StreamToArrayConsumer(int bufferSize)
-                => _bufferSize = bufferSize;
+                => BufferSize = bufferSize;
 
             public async ValueTask<byte[]> ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
             {
                 using var buffer = new MemoryStream();
-                await input.CopyToAsync(buffer, _bufferSize, cancellationToken);
+                await input.CopyToAsync(buffer, BufferSize, cancellationToken);
                 return buffer.ToArray();
             }
 
             public ValueTask DisposeAsync() => default;
         }
 
-        sealed class StreamToStringConsumer : IStreamConsumer<string>
+        private sealed class StreamToStringConsumer : IStreamConsumer<string>
         {
-            readonly int _bufferSize;
+            public int BufferSize { get; }
 
-            readonly Encoding _encoding;
+            public Encoding Encoding { get; }
 
             public StreamToStringConsumer(Encoding encoding, int bufferSize)
             {
-                _encoding = encoding;
-                _bufferSize = bufferSize;
+                Encoding = encoding ?? throw new ArgumentNullException(nameof(encoding));
+                BufferSize = bufferSize;
             }
 
             public async ValueTask<string> ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
             {
-                using var buffer = new MemoryStream();
-                await input.CopyToAsync(buffer, _bufferSize, cancellationToken);
-                return _encoding.GetString(buffer.ToArray());
+                using var reader = new StreamReader(input, Encoding, false, BufferSize, true);
+                return await reader.ReadToEndAsync();
             }
 
             public ValueTask DisposeAsync() => default;
         }
 
-        sealed class InlineStreamConsumer : IStreamConsumer
+        private sealed class InlineStreamConsumer : IStreamConsumer
         {
-            readonly Func<Stream, CancellationToken, ValueTask> _consume;
+            private Func<Stream, CancellationToken, ValueTask> ConsumerFun { get; }
 
-            readonly Func<ValueTask>? _dispose;
+            private Func<ValueTask>? DisposeFun { get; }
 
             public InlineStreamConsumer(Func<Stream, CancellationToken, ValueTask> consume, Func<ValueTask>? dispose)
             {
-                _consume = consume ?? throw new ArgumentNullException(nameof(consume));
-                _dispose = dispose;
+                ConsumerFun = consume ?? throw new ArgumentNullException(nameof(consume));
+                DisposeFun = dispose;
             }
 
             public ValueTask ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
-                => _consume(input, cancellationToken);
+                => ConsumerFun(input, cancellationToken);
 
             public ValueTask DisposeAsync()
-                => _dispose?.Invoke() ?? default;
+                => DisposeFun?.Invoke() ?? default;
         }
 
-        sealed class InlineStreamConsumer<T> : IStreamConsumer<T>
+        private sealed class InlineStreamConsumer<T> : IStreamConsumer<T>
         {
-            readonly Func<Stream, CancellationToken, ValueTask<T>> _consume;
+            private Func<Stream, CancellationToken, ValueTask<T>> ConsumerFun { get; }
 
-            readonly Func<ValueTask>? _dispose;
+            private Func<ValueTask>? DisposeFun { get; }
 
             public InlineStreamConsumer(Func<Stream, CancellationToken, ValueTask<T>> consume, Func<ValueTask>? dispose)
             {
-                _consume = consume ?? throw new ArgumentNullException(nameof(consume));
-                _dispose = dispose;
+                ConsumerFun = consume ?? throw new ArgumentNullException(nameof(consume));
+                DisposeFun = dispose;
             }
 
             public ValueTask<T> ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
-                => _consume(input, cancellationToken);
+                => ConsumerFun(input, cancellationToken);
 
             public ValueTask DisposeAsync()
-                => _dispose?.Invoke() ?? default;
+                => DisposeFun?.Invoke() ?? default;
         }
 
-        sealed class DelayedStreamConsumer : IStreamConsumer
+        private sealed class DelayedStreamConsumer : IStreamConsumer
         {
-            readonly Func<CancellationToken, ValueTask<IStreamConsumer>> _factory;
+            private Func<CancellationToken, ValueTask<IStreamConsumer>> Factory { get; }
 
-            IStreamConsumer? _consumer;
+            private IStreamConsumer? Consumer { get; set; }
 
             public DelayedStreamConsumer(Func<CancellationToken, ValueTask<IStreamConsumer>> factory)
             {
-                _factory = factory ?? throw new ArgumentNullException(nameof(factory));
+                Factory = factory ?? throw new ArgumentNullException(nameof(factory));
             }
 
             public async ValueTask ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
             {
-                _consumer = await _factory(cancellationToken);
-                await _consumer.ConsumeAsync(input, cancellationToken);
+                Consumer = await Factory(cancellationToken);
+                await Consumer.ConsumeAsync(input, cancellationToken);
             }
 
             public ValueTask DisposeAsync()
-                => _consumer?.DisposeAsync() ?? default;
+                => Consumer?.DisposeAsync() ?? default;
         }
 
         public const int DefaultBufferSize = 16 * 1024;
 
         public static Encoding DefaultEncoding { get; } = new UTF8Encoding(false);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static IStreamConsumer Create(Func<Stream, CancellationToken, ValueTask> consume, Func<ValueTask>? dispose = default)
             => new InlineStreamConsumer(consume, dispose);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static IStreamConsumer<T> Create<T>(Func<Stream, CancellationToken, ValueTask<T>> consume, Func<ValueTask>? dispose = default)
             => new InlineStreamConsumer<T>(consume, dispose);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static IStreamConsumer Delay(Func<CancellationToken, ValueTask<IStreamConsumer>> factory)
             => new DelayedStreamConsumer(factory);
 
@@ -160,9 +165,11 @@ namespace NCoreUtils.IO
         public static IStreamConsumer ToStream(Stream target, int copyBufferSize = DefaultBufferSize)
             => ToStream(target, copyBufferSize, false);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static IStreamConsumer<byte[]> ToArray(int copyBufferSize = DefaultBufferSize)
             => new StreamToArrayConsumer(copyBufferSize);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static IStreamConsumer<string> ToString(Encoding? encoding = default, int copyBufferSize = DefaultBufferSize)
             => new StreamToStringConsumer(encoding ?? DefaultEncoding, copyBufferSize);
     }

@@ -1,7 +1,9 @@
 using System;
+using System.Buffers;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -14,6 +16,28 @@ namespace NCoreUtils.IO
             public string? StringValue { get; set; }
 
             public int IntegerValue { get; set; }
+        }
+
+        private async ValueTask OptimisticCopyToAsync(Stream source, Stream destination, int bufferSize, CancellationToken cancellationToken)
+        {
+            var buffer = ArrayPool<byte>.Shared.Rent(bufferSize);
+            try
+            {
+                int read;
+                do
+                {
+                    read = await source.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+                    if (read != 0)
+                    {
+                        await destination.WriteAsync(buffer, 0, read, cancellationToken);
+                    }
+                }
+                while (read > 0);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
         }
 
         [Fact]
@@ -122,9 +146,9 @@ namespace NCoreUtils.IO
             var seed = Encoding.ASCII.GetBytes(@"Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce elementum nisi vel magna rhoncus, in aliquam ipsum accumsan. Phasellus efficitur lectus quis malesuada aliquet. Proin mattis sagittis magna vitae blandit. Cras vel diam sagittis, fringilla nunc vitae, vehicula mi. Nullam et auctor mi. Proin vel pharetra tortor. Donec posuere elementum risus, et aliquet magna pharetra non. Curabitur volutpat maximus sem at euismod. Fusce porta, lacus vel varius varius, lacus felis faucibus ante, fermentum sollicitudin elit neque rhoncus tortor. Aenean eget turpis consequat, luctus lorem vehicula, ullamcorper erat.");
             await using var prod = StreamProducer.FromStream(new MemoryStream(seed, false));
             var buffer = new MemoryStream();
-            await using var cons = StreamConsumer.Delay(_ => new ValueTask<IStreamConsumer>(StreamConsumer.Create(async (stream, ctoken) =>
+            await using var cons = StreamConsumer.Delay(_ => new ValueTask<IStreamConsumer>(StreamConsumer.Create((stream, ctoken) =>
             {
-                await stream.CopyToAsync(buffer, 8192, ctoken);
+                return OptimisticCopyToAsync(stream, buffer, 8192, ctoken);
             })));
             await prod.ConsumeAsync(cons);
             Assert.True(seed.SequenceEqual(buffer.ToArray()));
@@ -138,7 +162,7 @@ namespace NCoreUtils.IO
             await using var cons = new JsonStreamConsumer<Item>();
             var item1 = await prod.ConsumeAsync(cons);
             Assert.NotNull(item1);
-            Assert.Equal(item0.StringValue, item1.StringValue);
+            Assert.Equal(item0.StringValue, item1!.StringValue);
             Assert.Equal(item0.IntegerValue, item1.IntegerValue);
         }
 
@@ -166,6 +190,144 @@ namespace NCoreUtils.IO
         }
 
         [Fact]
+        public async Task EncryptAndDecryptAlternative()
+        {
+            var seed = @"Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce elementum nisi vel magna rhoncus, in aliquam ipsum accumsan. Phasellus efficitur lectus quis malesuada aliquet. Proin mattis sagittis magna vitae blandit. Cras vel diam sagittis, fringilla nunc vitae, vehicula mi. Nullam et auctor mi. Proin vel pharetra tortor. Donec posuere elementum risus, et aliquet magna pharetra non. Curabitur volutpat maximus sem at euismod. Fusce porta, lacus vel varius varius, lacus felis faucibus ante, fermentum sollicitudin elit neque rhoncus tortor. Aenean eget turpis consequat, luctus lorem vehicula, ullamcorper erat.";
+            var enc = new EncryptTransformation();
+            var dec = new DecryptTransformation();
+            var prod = StreamProducer.FromString(seed, Encoding.ASCII);
+            var cons = StreamConsumer.ToString(Encoding.ASCII);
+            var output = await prod.ConsumeAsync(cons
+                .Chain(dec)
+                .Chain(enc)
+            );
+            Assert.Equal(seed, output);
+            Assert.True(enc.HasStarted);
+            Assert.True(enc.HasCompleted);
+            Assert.Null(enc.Error);
+            Assert.True(enc.HasBeenDisposed);
+            Assert.True(dec.HasStarted);
+            Assert.True(dec.HasCompleted);
+            Assert.Null(dec.Error);
+            Assert.True(dec.HasBeenDisposed);
+        }
+
+        [Fact]
+        public async Task EncryptAndDecryptAlternativeWithBind()
+        {
+            var seed = @"Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce elementum nisi vel magna rhoncus, in aliquam ipsum accumsan. Phasellus efficitur lectus quis malesuada aliquet. Proin mattis sagittis magna vitae blandit. Cras vel diam sagittis, fringilla nunc vitae, vehicula mi. Nullam et auctor mi. Proin vel pharetra tortor. Donec posuere elementum risus, et aliquet magna pharetra non. Curabitur volutpat maximus sem at euismod. Fusce porta, lacus vel varius varius, lacus felis faucibus ante, fermentum sollicitudin elit neque rhoncus tortor. Aenean eget turpis consequat, luctus lorem vehicula, ullamcorper erat.";
+            var enc = new EncryptTransformation();
+            var dec = new DecryptTransformation();
+            var prod = StreamProducer.FromString(seed, Encoding.ASCII);
+            string output = string.Empty;
+            var cons = StreamConsumer.ToString(Encoding.ASCII).Bind(res => output = res);
+            await prod.ConsumeAsync(cons
+                .Chain(dec)
+                .Chain(enc)
+            );
+            Assert.Equal(seed, output);
+            Assert.True(enc.HasStarted);
+            Assert.True(enc.HasCompleted);
+            Assert.Null(enc.Error);
+            Assert.True(enc.HasBeenDisposed);
+            Assert.True(dec.HasStarted);
+            Assert.True(dec.HasCompleted);
+            Assert.Null(dec.Error);
+            Assert.True(dec.HasBeenDisposed);
+        }
+
+        [Fact]
+        public async Task CancelDuringAsyncProduce()
+        {
+            using var cancellationTokenSource = new CancellationTokenSource();
+            var data = new byte[128 * 1024];
+            var producer = StreamProducer.Create(async (output, cancellationToken) =>
+            {
+                while (true)
+                {
+                    await output.WriteAsync(data, 0, data.Length, cancellationToken);
+                    await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken);
+                }
+            });
+            var consumerCancellationTriggered = false;
+            var consumer = StreamConsumer.Create(async (input, cancellationToken) =>
+            {
+                var buffer = new byte[64 * 1024];
+                try
+                {
+                    while (true)
+                    {
+                        await input.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    consumerCancellationTriggered = true;
+                    throw;
+                }
+            });
+            var task = Assert.ThrowsAnyAsync<OperationCanceledException>(() => PipeStreamer.StreamAsync(producer, consumer, cancellationTokenSource.Token).AsTask());
+            cancellationTokenSource.CancelAfter(TimeSpan.FromMilliseconds(50));
+            await task;
+            Assert.True(consumerCancellationTriggered);
+        }
+
+        [Fact]
+        public async Task CancelInsideAsyncProduce()
+        {
+            using var cancellationTokenSource = new CancellationTokenSource();
+            var data = new byte[128 * 1024];
+            var producer = StreamProducer.Create(async (output, _) =>
+            {
+                while (true)
+                {
+                    await output.WriteAsync(data, 0, data.Length, cancellationTokenSource.Token);
+                    await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationTokenSource.Token);
+                }
+            });
+            var consumerCancellationTriggered = false;
+            var consumer = StreamConsumer.Create(async (input, cancellationToken) =>
+            {
+                var buffer = new byte[64 * 1024];
+                try
+                {
+                    while (true)
+                    {
+                        await input.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    consumerCancellationTriggered = true;
+                    throw;
+                }
+            });
+            var task = Assert.ThrowsAnyAsync<OperationCanceledException>(() => PipeStreamer.StreamAsync(producer, consumer, CancellationToken.None).AsTask());
+            cancellationTokenSource.CancelAfter(TimeSpan.FromMilliseconds(50));
+            await task;
+            Assert.True(consumerCancellationTriggered);
+        }
+
+        [Fact]
+        public async Task CancelInsideAsyncProduceDelayed()
+        {
+            using var cancellationTokenSource = new CancellationTokenSource();
+            var data = new byte[128 * 1024];
+            var producer = StreamProducer.Create(async (output, _) =>
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationTokenSource.Token);
+            });
+            var consumer = StreamConsumer.Create((input, cancellationToken) =>
+            {
+                Assert.True(false, "consumer should not be started until input");
+                return default;
+            });
+            var task = Assert.ThrowsAnyAsync<OperationCanceledException>(() => PipeStreamer.StreamAsync(producer, consumer, CancellationToken.None).AsTask());
+            cancellationTokenSource.Cancel();
+            await task;
+        }
+
+        [Fact]
         public async Task FailBeforeProduce()
         {
             var enc = new EncryptTransformation();
@@ -177,7 +339,8 @@ namespace NCoreUtils.IO
                 return prod
                     .Chain(enc)
                     .Chain(dec)
-                    .ConsumeAsync(cons);
+                    .ConsumeAsync(cons)
+                    .AsTask();
             });
             Assert.False(enc.HasStarted);
             Assert.False(enc.HasCompleted);
@@ -201,7 +364,26 @@ namespace NCoreUtils.IO
                 return prod
                     .Chain(enc)
                     .Chain(dec)
-                    .ConsumeAsync(cons);
+                    .ConsumeAsync(cons)
+                    .AsTask();
+            });
+            Assert.True(enc.HasBeenDisposed);
+            Assert.True(dec.HasBeenDisposed);
+        }
+
+        [Fact]
+        public async Task FailWhileProduceAlternative()
+        {
+            var enc = new EncryptTransformation();
+            var dec = new DecryptTransformation();
+            var prod = new FailWhileWriteProducer();
+            var cons = StreamConsumer.ToString(Encoding.ASCII);
+            await Assert.ThrowsAsync<ExpectedException>(() =>
+            {
+                return prod.ConsumeAsync(cons
+                    .Chain(dec)
+                    .Chain(enc)
+                ).AsTask();
             });
             Assert.True(enc.HasBeenDisposed);
             Assert.True(dec.HasBeenDisposed);
@@ -220,7 +402,8 @@ namespace NCoreUtils.IO
                     .Chain(enc)
                     .Chain(new FailBeforeTransformTransformation())
                     .Chain(dec)
-                    .ConsumeAsync(cons);
+                    .ConsumeAsync(cons)
+                    .AsTask();
             });
             Assert.True(enc.HasBeenDisposed);
             Assert.True(dec.HasBeenDisposed);
@@ -239,7 +422,8 @@ namespace NCoreUtils.IO
                     .Chain(enc)
                     .Chain(new FailWhileTransformTransformation())
                     .Chain(dec)
-                    .ConsumeAsync(cons);
+                    .ConsumeAsync(cons)
+                    .AsTask();
             });
             Assert.True(enc.HasBeenDisposed);
             Assert.True(dec.HasBeenDisposed);

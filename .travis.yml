@@ -1,8 +1,12 @@
-dist: boinic
+arch:
+  - amd64
+  - arm64
+os: linux
+dist: focal
 language: csharp
 solution: NCoreUtils.IO.sln
 mono: none
-dotnet: 3.1.105
+dotnet: 6.0.100
 script:
   - dotnet restore
-  - dotnet test -c Release -f netcoreapp3.1 NCoreUtils.IO.Unit
+  - dotnet test -c Release -f net6 NCoreUtils.IO.Unit
