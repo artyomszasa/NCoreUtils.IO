@@ -1,11 +1,14 @@
 using System;
 using System.Buffers;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
+
+#pragma warning disable CS0618
 
 namespace NCoreUtils.IO
 {
@@ -18,7 +21,7 @@ namespace NCoreUtils.IO
             public int IntegerValue { get; set; }
         }
 
-        private async ValueTask OptimisticCopyToAsync(Stream source, Stream destination, int bufferSize, CancellationToken cancellationToken)
+        private static async ValueTask OptimisticCopyToAsync(Stream source, Stream destination, int bufferSize, CancellationToken cancellationToken)
         {
             var buffer = ArrayPool<byte>.Shared.Rent(bufferSize);
             try
@@ -26,10 +29,10 @@ namespace NCoreUtils.IO
                 int read;
                 do
                 {
-                    read = await source.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+                    read = await source.ReadAsync(buffer.AsMemory(), cancellationToken);
                     if (read != 0)
                     {
-                        await destination.WriteAsync(buffer, 0, read, cancellationToken);
+                        await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                     }
                 }
                 while (read > 0);
@@ -155,6 +158,8 @@ namespace NCoreUtils.IO
         }
 
         [Fact]
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026",
+            Justification = "No dynamic dependencies.")]
         public async Task Json()
         {
             var item0 = new Item { StringValue = "xxx", IntegerValue = 2 };
@@ -245,7 +250,7 @@ namespace NCoreUtils.IO
             {
                 while (true)
                 {
-                    await output.WriteAsync(data, 0, data.Length, cancellationToken);
+                    await output.WriteAsync(data.AsMemory(), cancellationToken);
                     await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken);
                 }
             });
@@ -257,7 +262,7 @@ namespace NCoreUtils.IO
                 {
                     while (true)
                     {
-                        await input.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+                        await input.ReadAsync(buffer.AsMemory(), cancellationToken);
                     }
                 }
                 catch (OperationCanceledException)
@@ -281,7 +286,7 @@ namespace NCoreUtils.IO
             {
                 while (true)
                 {
-                    await output.WriteAsync(data, 0, data.Length, cancellationTokenSource.Token);
+                    await output.WriteAsync(data.AsMemory(), cancellationTokenSource.Token);
                     await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationTokenSource.Token);
                 }
             });
@@ -293,7 +298,7 @@ namespace NCoreUtils.IO
                 {
                     while (true)
                     {
-                        await input.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+                        await input.ReadAsync(buffer.AsMemory(), cancellationToken);
                     }
                 }
                 catch (OperationCanceledException)
@@ -430,3 +435,5 @@ namespace NCoreUtils.IO
         }
     }
 }
+
+#pragma warning restore CS0618

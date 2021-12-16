@@ -13,7 +13,7 @@ namespace NCoreUtils.IO
             CancellationToken cancellationToken = default)
         {
             await using var consumer = StreamConsumer.ToString(encoding, copyBufferSize);
-            return await producer.ConsumeAsync(consumer).ConfigureAwait(false);
+            return await producer.ConsumeAsync(consumer, cancellationToken).ConfigureAwait(false);
         }
 
         public static async ValueTask<byte[]> ToArrayAsync(
@@ -22,7 +22,7 @@ namespace NCoreUtils.IO
             CancellationToken cancellationToken = default)
         {
             await using var consumer = StreamConsumer.ToArray(copyBufferSize);
-            return await producer.ConsumeAsync(consumer).ConfigureAwait(false);
+            return await producer.ConsumeAsync(consumer, cancellationToken).ConfigureAwait(false);
         }
     }
 }

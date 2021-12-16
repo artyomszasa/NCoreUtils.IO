@@ -18,7 +18,9 @@ namespace NCoreUtils.IO
             }
             if (0 == Interlocked.CompareExchange(ref streamer._consumptionStarted, 1, 0))
             {
+#pragma warning disable CA2012
                 streamer.ConsumptionTask = streamer.ConsumeAsync(streamer.ConsumerCancellationTokenSource.Token);
+#pragma warning restore CA2012
             }
         };
 
@@ -82,7 +84,7 @@ namespace NCoreUtils.IO
             catch (OperationCanceledException)
             {
                 // pass cancellation to completion source
-                ConsumerCompletionSource?.TrySetCanceled();
+                ConsumerCompletionSource?.TrySetCanceled(CancellationToken.None);
                 // pass exception to ValueTask
                 throw;
             }
@@ -124,7 +126,7 @@ namespace NCoreUtils.IO
                 // if consumption has not been started but the completion source has been created --> set as cancelled
                 if (0 == Interlocked.CompareExchange(ref _consumptionStarted, 0, 0))
                 {
-                    ConsumerCompletionSource?.TrySetCanceled();
+                    ConsumerCompletionSource?.TrySetCanceled(CancellationToken.None);
                     throw; // sync case
                 }
             }

@@ -1,6 +1,8 @@
 using System;
 using System.Security.Cryptography;
 
+#pragma warning disable SYSLIB0022
+
 namespace NCoreUtils.IO
 {
     public abstract class EncryptionBase
@@ -18,3 +20,5 @@ namespace NCoreUtils.IO
         }
     }
 }
+
+#pragma warning restore SYSLIB0022

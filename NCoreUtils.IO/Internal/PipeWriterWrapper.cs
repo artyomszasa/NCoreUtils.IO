@@ -77,7 +77,7 @@ namespace NCoreUtils.IO.Internal
         public override Span<byte> GetSpan(int sizeHint = 0)
             => Writer.GetSpan(sizeHint);
 
-        public override async ValueTask<FlushResult> WriteAsync(ReadOnlyMemory<byte> source, CancellationToken cancellationToken = default(CancellationToken))
+        public override async ValueTask<FlushResult> WriteAsync(ReadOnlyMemory<byte> source, CancellationToken cancellationToken = default)
         {
             if (0 == Interlocked.CompareExchange(ref _callbackFired, 0, 0))
             {
@@ -89,9 +89,15 @@ namespace NCoreUtils.IO.Internal
                 }
                 else
                 {
+#if NET6_0_OR_GREATER
+                    await Writer.WriteAsync(source[..TriggerSize], cancellationToken);
+                    FireCallback();
+                    flushResult = await Writer.WriteAsync(source[TriggerSize..], cancellationToken);
+#else
                     await Writer.WriteAsync(source.Slice(0, TriggerSize), cancellationToken);
                     FireCallback();
                     flushResult = await Writer.WriteAsync(source.Slice(TriggerSize), cancellationToken);
+#endif
                 }
                 return flushResult;
             }

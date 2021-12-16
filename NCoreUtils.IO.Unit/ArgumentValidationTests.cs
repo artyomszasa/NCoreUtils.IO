@@ -1,8 +1,11 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
+
+#pragma warning disable CS0618
 
 namespace NCoreUtils.IO
 {
@@ -14,7 +17,7 @@ namespace NCoreUtils.IO
                 => default;
 
             public ValueTask PerformAsync(Stream input, Stream output, CancellationToken cancellationToken = default)
-                => new ValueTask(input.CopyToAsync(output, -1, cancellationToken));
+                => new(input.CopyToAsync(output, -1, cancellationToken));
         }
 
         [Fact]
@@ -27,6 +30,8 @@ namespace NCoreUtils.IO
         }
 
         [Fact]
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026",
+            Justification = "Dummy")]
         public void Producer()
         {
             Assert.Equal("source", Assert.Throws<ArgumentNullException>(() => StreamProducer.FromStream(default!)).ParamName);
@@ -38,6 +43,8 @@ namespace NCoreUtils.IO
         }
 
         [Fact]
+        [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026",
+            Justification = "Dummy")]
         public void Streamer()
         {
             Assert.Equal("consumer", Assert.Throws<ArgumentNullException>(() => PipeStreamer.Bind<int>(default!, _ => { })).ParamName);
@@ -56,3 +63,5 @@ namespace NCoreUtils.IO
         }
     }
 }
+
+#pragma warning restore CS0618

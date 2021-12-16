@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NCoreUtils.IO.Unit", "NCore
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NCoreUtils.IO.Json", "NCoreUtils.IO.Json\NCoreUtils.IO.Json.csproj", "{2E9DE587-3125-44BA-8225-CB2CC5815825}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NCoreUtils.IO.TrimCheck", "NCoreUtils.IO.TrimCheck\NCoreUtils.IO.TrimCheck.csproj", "{33E99601-46DC-49B2-A0B8-C1696602B61E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -72,5 +74,17 @@ Global
 		{2E9DE587-3125-44BA-8225-CB2CC5815825}.Release|x64.Build.0 = Release|Any CPU
 		{2E9DE587-3125-44BA-8225-CB2CC5815825}.Release|x86.ActiveCfg = Release|Any CPU
 		{2E9DE587-3125-44BA-8225-CB2CC5815825}.Release|x86.Build.0 = Release|Any CPU
+		{33E99601-46DC-49B2-A0B8-C1696602B61E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{33E99601-46DC-49B2-A0B8-C1696602B61E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{33E99601-46DC-49B2-A0B8-C1696602B61E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{33E99601-46DC-49B2-A0B8-C1696602B61E}.Debug|x64.Build.0 = Debug|Any CPU
+		{33E99601-46DC-49B2-A0B8-C1696602B61E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{33E99601-46DC-49B2-A0B8-C1696602B61E}.Debug|x86.Build.0 = Debug|Any CPU
+		{33E99601-46DC-49B2-A0B8-C1696602B61E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{33E99601-46DC-49B2-A0B8-C1696602B61E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{33E99601-46DC-49B2-A0B8-C1696602B61E}.Release|x64.ActiveCfg = Release|Any CPU
+		{33E99601-46DC-49B2-A0B8-C1696602B61E}.Release|x64.Build.0 = Release|Any CPU
+		{33E99601-46DC-49B2-A0B8-C1696602B61E}.Release|x86.ActiveCfg = Release|Any CPU
+		{33E99601-46DC-49B2-A0B8-C1696602B61E}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

@@ -25,7 +25,7 @@ namespace NCoreUtils.IO
             }
 
             public ValueTask ProduceAsync(Stream output, CancellationToken cancellationToken = default)
-                => new ValueTask(Source.CopyToAsync(output, BufferSize, cancellationToken));
+                => new(Source.CopyToAsync(output, BufferSize, cancellationToken));
 
             public ValueTask DisposeAsync()
             {
