@@ -89,14 +89,15 @@ namespace NCoreUtils.IO.Internal
                 }
                 else
                 {
+                    var splitIndex = TriggerSize - WrittenBeforeTrigger;
 #if NET6_0_OR_GREATER
-                    await Writer.WriteAsync(source[..TriggerSize], cancellationToken);
+                    await Writer.WriteAsync(source[..splitIndex], cancellationToken);
                     FireCallback();
-                    flushResult = await Writer.WriteAsync(source[TriggerSize..], cancellationToken);
+                    flushResult = await Writer.WriteAsync(source[splitIndex..], cancellationToken);
 #else
-                    await Writer.WriteAsync(source.Slice(0, TriggerSize), cancellationToken);
+                    await Writer.WriteAsync(source.Slice(0, splitIndex), cancellationToken);
                     FireCallback();
-                    flushResult = await Writer.WriteAsync(source.Slice(TriggerSize), cancellationToken);
+                    flushResult = await Writer.WriteAsync(source.Slice(splitIndex), cancellationToken);
 #endif
                 }
                 return flushResult;
