@@ -3,10 +3,9 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace NCoreUtils.IO
+namespace NCoreUtils.IO;
+
+public interface IStreamTransformation : IAsyncDisposable
 {
-    public interface IStreamTransformation : IAsyncDisposable
-    {
-        ValueTask PerformAsync(Stream input, Stream output, CancellationToken cancellationToken = default);
-    }
+    ValueTask PerformAsync(Stream input, Stream output, CancellationToken cancellationToken = default);
 }
