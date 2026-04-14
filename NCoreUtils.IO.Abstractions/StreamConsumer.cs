@@ -19,7 +19,7 @@ public static class StreamConsumer
 
         public async ValueTask ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
         {
-            await input.CopyToAsync(Target, BufferSize, cancellationToken);
+            await input.CopyToAsync(Target, BufferSize, cancellationToken).ConfigureAwait(false);
         }
 
         public ValueTask DisposeAsync()
@@ -44,7 +44,7 @@ public static class StreamConsumer
         public async ValueTask<byte[]> ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
         {
             using var buffer = new MemoryStream();
-            await input.CopyToAsync(buffer, BufferSize, cancellationToken);
+            await input.CopyToAsync(buffer, BufferSize, cancellationToken).ConfigureAwait(false);
             return buffer.ToArray();
         }
 
@@ -60,11 +60,11 @@ public static class StreamConsumer
         public async ValueTask<string> ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
         {
             using var reader = new StreamReader(input, Encoding, false, BufferSize, true);
-            return await reader.ReadToEndAsync(
 #if NET7_0_OR_GREATER
-                cancellationToken
+            return await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+#else
+            return await reader.ReadToEndAsync().ConfigureAwait(false);
 #endif
-            );
         }
 
         public ValueTask DisposeAsync() => default;
@@ -116,8 +116,8 @@ public static class StreamConsumer
 
         public async ValueTask ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
         {
-            Consumer = await Factory(cancellationToken);
-            await Consumer.ConsumeAsync(input, cancellationToken);
+            Consumer = await Factory(cancellationToken).ConfigureAwait(false);
+            await Consumer.ConsumeAsync(input, cancellationToken).ConfigureAwait(false);
         }
 
         public ValueTask DisposeAsync()

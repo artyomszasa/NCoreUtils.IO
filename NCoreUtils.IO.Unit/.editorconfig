@@ -1,0 +1,32 @@
+# Top level entry required to mark this as a global AnalyzerConfig file
+is_global = true
+
+# CA1032: Exception test helper is intentionally minimal
+dotnet_diagnostic.CA1032.severity = silent
+
+# CA1716: Test contract keeps the existing error naming
+dotnet_diagnostic.CA1716.severity = silent
+
+# CA1034: Nested test helper types are intentional
+dotnet_diagnostic.CA1034.severity = silent
+
+# CA1720: Existing test names are kept for readability
+dotnet_diagnostic.CA1720.severity = silent
+
+# CA2007: ConfigureAwait adds noise in test code
+dotnet_diagnostic.CA2007.severity = silent
+
+# CA2000: Ownership is exercised by the test scenarios
+dotnet_diagnostic.CA2000.severity = silent
+
+# CA1062: Test doubles intentionally omit production guards
+dotnet_diagnostic.CA1062.severity = silent
+
+# CA1849: Tests intentionally use synchronous cancellation
+dotnet_diagnostic.CA1849.severity = silent
+
+# CA1852: Test serializer contexts do not need sealing changes
+dotnet_diagnostic.CA1852.severity = silent
+
+# CA5401: Test cryptography uses deterministic inputs intentionally
+dotnet_diagnostic.CA5401.severity = silent

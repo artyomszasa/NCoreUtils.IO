@@ -59,7 +59,7 @@ public static class StreamProducer
         public async ValueTask ProduceAsync(Stream output, CancellationToken cancellationToken = default)
         {
             using var writer = new StreamWriter(output, Encoding, BufferSize, true);
-            await writer.WriteAsync(Source);
+            await writer.WriteAsync(Source).ConfigureAwait(false);
         }
 
         public ValueTask DisposeAsync()
@@ -84,10 +84,11 @@ public static class StreamProducer
         public ValueTask DisposeAsync()
             => default;
 
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2007:Consider calling ConfigureAwait on the awaited task", Justification = "Az await using itt zajos.")]
         public async ValueTask ProduceAsync(Stream output, CancellationToken cancellationToken = default)
         {
-            await using var producer = await Factory(cancellationToken);
-            await producer.ProduceAsync(output, cancellationToken);
+            await using var producer = await Factory(cancellationToken).ConfigureAwait(false);
+            await producer.ProduceAsync(output, cancellationToken).ConfigureAwait(false);
         }
     }
 

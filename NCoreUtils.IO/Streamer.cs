@@ -18,7 +18,7 @@ public sealed class Streamer : IAsyncDisposable
         }
         if (0 == Interlocked.CompareExchange(ref streamer._consumptionStarted, 1, 0))
         {
-            streamer.ConsumptionTask = streamer.ConsumeAsync(streamer.ConsumerCancellationTokenSource.Token);
+            streamer.ConsumptionTask = streamer.ConsumeAsync(streamer.ConsumerCancellationTokenSource.Token).AsTask();
         }
     };
 
@@ -37,7 +37,7 @@ public sealed class Streamer : IAsyncDisposable
 
     private int _readerCompleted;
 
-    private ValueTask? ConsumptionTask;
+    private Task? ConsumptionTask;
 
     private TaskCompletionSource<int>? ConsumerCompletionSource { get; set; }
 
@@ -71,6 +71,16 @@ public sealed class Streamer : IAsyncDisposable
             return true;
         }
         return false;
+    }
+
+    private static ValueTask CancelAsync(CancellationTokenSource cancellationTokenSource)
+    {
+#if NET8_0_OR_GREATER
+        return new ValueTask(cancellationTokenSource.CancelAsync());
+#else
+        cancellationTokenSource.Cancel();
+        return default;
+#endif
     }
 
     private async ValueTask ConsumeAsync(CancellationToken cancellationToken)
@@ -119,7 +129,7 @@ public sealed class Streamer : IAsyncDisposable
             // cancel whole operation if not cancelled already
             if (!ConsumerCancellationTokenSource.IsCancellationRequested)
             {
-                ConsumerCancellationTokenSource.Cancel();
+                await CancelAsync(ConsumerCancellationTokenSource).ConfigureAwait(false);
             }
             // if consumption has not been started but the completion source has been created --> set as cancelled
             if (0 == Interlocked.CompareExchange(ref _consumptionStarted, 0, 0))
@@ -156,9 +166,9 @@ public sealed class Streamer : IAsyncDisposable
     private ValueTask GetCompletionTask()
     {
         // if consumption task has been initialized --> return it
-        if (ConsumptionTask.HasValue)
+        if (ConsumptionTask is not null)
         {
-            return ConsumptionTask.Value;
+            return new ValueTask(ConsumptionTask);
         }
         // otherwise fallback to async completion
         ConsumerCompletionSource ??= new TaskCompletionSource<int>();
@@ -176,7 +186,7 @@ public sealed class Streamer : IAsyncDisposable
                 if (productionTask.IsCompletedSuccessfully)
                 {
                     // consumer must have started --> consumptionTask must have been initialized
-                    return ConsumptionTask!.Value;
+                    return new ValueTask(ConsumptionTask!);
                 }
                 return productionTask;
             }
@@ -195,12 +205,12 @@ public sealed class Streamer : IAsyncDisposable
             // cancel operation if still relevant
             if (!ConsumerCancellationTokenSource.IsCancellationRequested)
             {
-                ConsumerCancellationTokenSource.Cancel();
+                await CancelAsync(ConsumerCancellationTokenSource).ConfigureAwait(false);
             }
             // await task is it has been created --> it may throw OperationCanceledException but this is intended
-            if (ConsumptionTask.HasValue && !ConsumptionTask.Value.IsCompleted)
+            if (ConsumptionTask is not null && !ConsumptionTask.IsCompleted)
             {
-                await Task.WhenAny(ConsumptionTask.Value.AsTask()).ConfigureAwait(false);
+                await Task.WhenAny(ConsumptionTask).ConfigureAwait(false);
             }
             // dispose resources
             await Producer.DisposeAsync().ConfigureAwait(false);

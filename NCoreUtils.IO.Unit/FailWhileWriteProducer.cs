@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -15,6 +16,7 @@ namespace NCoreUtils.IO
 
         public async ValueTask ProduceAsync(Stream output, CancellationToken cancellationToken = default)
         {
+            ArgumentNullException.ThrowIfNull(output);
             await output.WriteAsync(_seed, cancellationToken);
             await output.FlushAsync(cancellationToken);
 #pragma warning disable CA2016

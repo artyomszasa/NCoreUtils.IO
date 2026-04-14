@@ -21,5 +21,8 @@ public class JsonStreamConsumer<T>(JsonTypeInfo<T> typeInfo) : IStreamConsumer<T
         => JsonSerializer.DeserializeAsync(input, TypeInfo, cancellationToken);
 
     public ValueTask DisposeAsync()
-        => default;
+    {
+        GC.SuppressFinalize(this);
+        return default;
+    }
 }

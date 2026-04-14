@@ -48,7 +48,7 @@ public sealed class PipeWriterWrapper<T>(PipeWriter writer, int triggerSize, Act
 
     public override async ValueTask CompleteAsync(Exception? exception = default)
     {
-        await Writer.CompleteAsync(exception);
+        await Writer.CompleteAsync(exception).ConfigureAwait(false);
         if (exception is null)
         {
             FireCallback();
@@ -58,7 +58,7 @@ public sealed class PipeWriterWrapper<T>(PipeWriter writer, int triggerSize, Act
 
     public override async ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
     {
-        var flushResult = await Writer.FlushAsync(cancellationToken);
+        var flushResult = await Writer.FlushAsync(cancellationToken).ConfigureAwait(false);
         FireCallback();
         return flushResult;
     }
@@ -76,24 +76,24 @@ public sealed class PipeWriterWrapper<T>(PipeWriter writer, int triggerSize, Act
             FlushResult flushResult;
             if (TriggerSize >= source.Length + WrittenBeforeTrigger)
             {
-                flushResult = await Writer.WriteAsync(source, cancellationToken);
+                flushResult = await Writer.WriteAsync(source, cancellationToken).ConfigureAwait(false);
                 WrittenBeforeTrigger += source.Length;
             }
             else
             {
                 var splitIndex = TriggerSize - WrittenBeforeTrigger;
 #if NET6_0_OR_GREATER
-                await Writer.WriteAsync(source[..splitIndex], cancellationToken);
+                await Writer.WriteAsync(source[..splitIndex], cancellationToken).ConfigureAwait(false);
                 FireCallback();
-                flushResult = await Writer.WriteAsync(source[splitIndex..], cancellationToken);
+                flushResult = await Writer.WriteAsync(source[splitIndex..], cancellationToken).ConfigureAwait(false);
 #else
-                await Writer.WriteAsync(source.Slice(0, splitIndex), cancellationToken);
+                await Writer.WriteAsync(source.Slice(0, splitIndex), cancellationToken).ConfigureAwait(false);
                 FireCallback();
-                flushResult = await Writer.WriteAsync(source.Slice(splitIndex), cancellationToken);
+                flushResult = await Writer.WriteAsync(source.Slice(splitIndex), cancellationToken).ConfigureAwait(false);
 #endif
             }
             return flushResult;
         }
-        return await Writer.WriteAsync(source, cancellationToken);
+        return await Writer.WriteAsync(source, cancellationToken).ConfigureAwait(false);
     }
 }

@@ -13,6 +13,8 @@ namespace NCoreUtils.IO
 
         public async ValueTask PerformAsync(Stream input, Stream output, CancellationToken cancellationToken = default)
         {
+            ArgumentNullException.ThrowIfNull(input);
+            ArgumentNullException.ThrowIfNull(output);
             var buffer = new byte[20];
             var read = await input.ReadAsync(buffer.AsMemory(0, 20), cancellationToken);
             await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);

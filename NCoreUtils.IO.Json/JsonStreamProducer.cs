@@ -23,7 +23,10 @@ public class JsonStreamProducer(object? value, Type valueType, JsonSerializerCon
     public JsonSerializerContext Context { get; } = context;
 
     public ValueTask DisposeAsync()
-        => default;
+    {
+        GC.SuppressFinalize(this);
+        return default;
+    }
 
     public ValueTask ProduceAsync(Stream output, CancellationToken cancellationToken = default)
         => new(JsonSerializer.SerializeAsync(output, Value!, ValueType, Context, cancellationToken));

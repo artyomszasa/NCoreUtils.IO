@@ -24,6 +24,8 @@ namespace NCoreUtils.IO
 
         public async ValueTask PerformAsync(Stream input, Stream output, CancellationToken cancellationToken = default)
         {
+            ArgumentNullException.ThrowIfNull(input);
+            ArgumentNullException.ThrowIfNull(output);
             HasStarted = true;
             try
             {

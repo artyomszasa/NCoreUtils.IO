@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,7 +20,7 @@ public static class PipeStreamer
         private readonly Action<T> _store = store ?? throw new ArgumentNullException(nameof(store));
 
         public async ValueTask ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
-            => _store(await _consumer.ConsumeAsync(input, cancellationToken));
+            => _store(await _consumer.ConsumeAsync(input, cancellationToken).ConfigureAwait(false));
 
         public ValueTask DisposeAsync()
             => _consumer.DisposeAsync();
@@ -125,8 +126,19 @@ public static class PipeStreamer
         IStreamConsumer consumer,
         CancellationToken cancellationToken = default)
     {
-        await using var streamer = new Streamer(producer, consumer, cancellationToken);
-        await streamer.RunAsync();
+        if (producer is null)
+        {
+            throw new ArgumentNullException(nameof(producer));
+        }
+        if (consumer is null)
+        {
+            throw new ArgumentNullException(nameof(consumer));
+        }
+        var streamer = new Streamer(producer, consumer, cancellationToken);
+        await using (streamer.ConfigureAwait(false))
+        {
+            await streamer.RunAsync().ConfigureAwait(false);
+        }
     }
 
     public static IStreamConsumer Bind<T>(this IStreamConsumer<T> consumer, Action<T> store)
@@ -141,6 +153,14 @@ public static class PipeStreamer
     /// <param name="cancellationToken">Cancellation token.</param>
     public static async ValueTask ConsumeAsync(this IStreamProducer producer, IStreamConsumer consumer, CancellationToken cancellationToken = default)
     {
+        if (producer is null)
+        {
+            throw new ArgumentNullException(nameof(producer));
+        }
+        if (consumer is null)
+        {
+            throw new ArgumentNullException(nameof(consumer));
+        }
         try
         {
             await StreamAsync(producer, consumer, cancellationToken).ConfigureAwait(false);
@@ -151,8 +171,17 @@ public static class PipeStreamer
         }
     }
 
+    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "A streamer felszabadítja.")]
     public static async ValueTask<T> ConsumeAsync<T>(this IStreamProducer producer, IStreamConsumer<T> consumer, CancellationToken cancellationToken = default)
     {
+        if (producer is null)
+        {
+            throw new ArgumentNullException(nameof(producer));
+        }
+        if (consumer is null)
+        {
+            throw new ArgumentNullException(nameof(consumer));
+        }
         try
         {
             T result = default!;

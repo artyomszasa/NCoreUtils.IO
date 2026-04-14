@@ -1,0 +1,5 @@
+# Top level entry required to mark this as a global AnalyzerConfig file
+is_global = true
+
+# CA1303: Trim check sample keeps the literal console output
+dotnet_diagnostic.CA1303.severity = silent

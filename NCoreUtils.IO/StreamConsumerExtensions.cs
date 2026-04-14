@@ -12,8 +12,11 @@ public static class StreamConsumerExtensions
         int copyBufferSize = StreamConsumer.DefaultBufferSize,
         CancellationToken cancellationToken = default)
     {
-        await using var consumer = StreamConsumer.ToString(encoding, copyBufferSize);
-        return await producer.ConsumeAsync(consumer, cancellationToken).ConfigureAwait(false);
+        var consumer = StreamConsumer.ToString(encoding, copyBufferSize);
+        await using (consumer.ConfigureAwait(false))
+        {
+            return await producer.ConsumeAsync(consumer, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public static async ValueTask<byte[]> ToArrayAsync(
@@ -21,7 +24,10 @@ public static class StreamConsumerExtensions
         int copyBufferSize = StreamConsumer.DefaultBufferSize,
         CancellationToken cancellationToken = default)
     {
-        await using var consumer = StreamConsumer.ToArray(copyBufferSize);
-        return await producer.ConsumeAsync(consumer, cancellationToken).ConfigureAwait(false);
+        var consumer = StreamConsumer.ToArray(copyBufferSize);
+        await using (consumer.ConfigureAwait(false))
+        {
+            return await producer.ConsumeAsync(consumer, cancellationToken).ConfigureAwait(false);
+        }
     }
 }
