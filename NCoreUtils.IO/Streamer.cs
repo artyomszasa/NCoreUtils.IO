@@ -57,8 +57,8 @@ public sealed class Streamer : IAsyncDisposable
         var triggerSize = Math.Min(options.Pool.MaxBufferSize, options.MinimumSegmentSize);
         var pipe = new Pipe(options);
         ConsumerCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        Producer = producer ?? throw new ArgumentNullException(nameof(producer));
-        Consumer = consumer ?? throw new ArgumentNullException(nameof(consumer));
+        Producer = producer.ThrowIfNull();
+        Consumer = consumer.ThrowIfNull();
         Writer = new PipeWriterWrapper<Streamer>(pipe.Writer, triggerSize, ProductionStartedCallback, WriterCompletionCallback, this);
         Reader = pipe.Reader;
     }

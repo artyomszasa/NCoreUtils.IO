@@ -15,7 +15,7 @@ public static class StreamProducer
 
         public int BufferSize { get; } = bufferSize;
 
-        public Stream Source { get; } = source ?? throw new ArgumentNullException(nameof(source));
+        public Stream Source { get; } = source.ThrowIfNull();
 
         public ValueTask ProduceAsync(Stream output, CancellationToken cancellationToken = default)
             => new(Source.CopyToAsync(output, BufferSize, cancellationToken));
@@ -37,7 +37,7 @@ public static class StreamProducer
 
     private sealed class InlineStreamProducer(Func<Stream, CancellationToken, ValueTask> produce, Func<ValueTask>? dispose) : IStreamProducer
     {
-        private Func<Stream, CancellationToken, ValueTask> ProducerFun { get; } = produce ?? throw new ArgumentNullException(nameof(produce));
+        private Func<Stream, CancellationToken, ValueTask> ProducerFun { get; } = produce.ThrowIfNull();
 
         private Func<ValueTask>? DisposeFun { get; } = dispose;
 
@@ -50,9 +50,9 @@ public static class StreamProducer
 
     private sealed class FromStringProducer(Encoding encoding, string source, int bufferSize) : IStreamProducer
     {
-        public string Source { get; } = source ?? throw new ArgumentNullException(nameof(source));
+        public string Source { get; } = source.ThrowIfNull();
 
-        public Encoding Encoding { get; } = encoding ?? throw new ArgumentNullException(nameof(encoding));
+        public Encoding Encoding { get; } = encoding.ThrowIfNull();
 
         public int BufferSize { get; } = bufferSize;
 
@@ -79,7 +79,7 @@ public static class StreamProducer
 
     private sealed class DelayedStreamProducer(Func<CancellationToken, ValueTask<IStreamProducer>> factory) : IStreamProducer
     {
-        private Func<CancellationToken, ValueTask<IStreamProducer>> Factory { get; } = factory ?? throw new ArgumentNullException(nameof(factory));
+        private Func<CancellationToken, ValueTask<IStreamProducer>> Factory { get; } = factory.ThrowIfNull();
 
         public ValueTask DisposeAsync()
             => default;
@@ -115,30 +115,17 @@ public static class StreamProducer
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static IStreamProducer FromArray(byte[] data, int copyBufferSize = DefaultBufferSize)
     {
-        if (data is null)
-        {
-            throw new ArgumentNullException(nameof(data));
-        }
+        data.ThrowIfNull();
         return FromArray(data, 0, data.Length, copyBufferSize);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static IStreamProducer FromArray(byte[] data, int index, int count, int copyBufferSize = DefaultBufferSize)
     {
-        if (data is null)
-        {
-            throw new ArgumentNullException(nameof(data));
-        }
-        return FromStream(new MemoryStream(data, index, count, false, true), copyBufferSize);
+        return FromStream(new MemoryStream(data.ThrowIfNull(), index, count, false, true), copyBufferSize);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static IStreamProducer FromString(string input, Encoding? encoding = default, int copyBufferSize = DefaultBufferSize)
-    {
-        if (input is null)
-        {
-            throw new ArgumentNullException(nameof(input));
-        }
-        return new FromStringProducer(encoding ?? DefaultEncoding, input, copyBufferSize);
-    }
+        => new FromStringProducer(encoding ?? DefaultEncoding, input.ThrowIfNull(), copyBufferSize);
 }

@@ -18,7 +18,7 @@ public class JsonStreamProducer(object? value, Type valueType, JsonSerializerCon
 
     public object? Value { get; } = value;
 
-    public Type ValueType { get; } = valueType ?? throw new ArgumentNullException(nameof(valueType));
+    public Type ValueType { get; } = valueType.ThrowIfNull();
 
     public JsonSerializerContext Context { get; } = context;
 

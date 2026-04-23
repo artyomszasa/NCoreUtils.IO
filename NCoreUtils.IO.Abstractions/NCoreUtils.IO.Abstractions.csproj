@@ -26,6 +26,20 @@
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisMode>All</AnalysisMode>
   </PropertyGroup>
+  <!-- NOTE: NET Standard polyfill -->
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net461' ">
+    <Compile Include="..\shared\CodeAnalysis\**" />
+  </ItemGroup>
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net48' ">
+    <Compile Include="..\shared\CodeAnalysis\**" />
+  </ItemGroup>
+  <ItemGroup Condition="!$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net6.0'))">
+    <Compile Include="..\shared\CompilerServices\**" />
+  </ItemGroup>
+  <!-- NOTE: Common -->
+  <ItemGroup>
+    <Compile Include="..\shared\Check.cs" />
+  </ItemGroup>
   <ItemGroup Condition=" $(TargetFramework.StartsWith('net4')) ">
     <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="1.1.1" />
     <PackageReference Include="NCoreUtils.Backports" Version="3.1.0" />

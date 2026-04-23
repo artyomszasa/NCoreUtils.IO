@@ -10,7 +10,7 @@ public static class StreamTransformation
 {
     sealed class InlineStreamTransformation(Func<Stream, Stream, CancellationToken, ValueTask> transform, Func<ValueTask>? dispose) : IStreamTransformation
     {
-        private Func<Stream, Stream, CancellationToken, ValueTask> TransformFun { get; } = transform ?? throw new ArgumentNullException(nameof(transform));
+        private Func<Stream, Stream, CancellationToken, ValueTask> TransformFun { get; } = transform.ThrowIfNull();
 
         private Func<ValueTask>? DisposeFun { get; } = dispose;
 
