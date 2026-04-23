@@ -264,7 +264,7 @@ public partial class StreamingTests
             {
                 while (true)
                 {
-                    await input.ReadAsync(buffer.AsMemory(), cancellationToken);
+                    _ = await input.ReadAsync(buffer.AsMemory(), cancellationToken);
                 }
             }
             catch (OperationCanceledException)
@@ -300,7 +300,7 @@ public partial class StreamingTests
             {
                 while (true)
                 {
-                    await input.ReadAsync(buffer.AsMemory(), cancellationToken);
+                    _ = await input.ReadAsync(buffer.AsMemory(), cancellationToken);
                 }
             }
             catch (OperationCanceledException)
