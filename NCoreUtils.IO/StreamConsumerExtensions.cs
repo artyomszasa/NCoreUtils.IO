@@ -12,11 +12,10 @@ public static class StreamConsumerExtensions
         int copyBufferSize = StreamConsumer.DefaultBufferSize,
         CancellationToken cancellationToken = default)
     {
-        var consumer = StreamConsumer.ToString(encoding, copyBufferSize);
-        await using (consumer.ConfigureAwait(false))
-        {
-            return await producer.ConsumeAsync(consumer, cancellationToken).ConfigureAwait(false);
-        }
+#pragma warning disable CA2007 // Consider calling ConfigureAwait on the awaited task
+        await using var consumer = StreamConsumer.ToString(encoding, copyBufferSize);
+#pragma warning restore CA2007 // Consider calling ConfigureAwait on the awaited task
+        return await producer.ConsumeAsync(consumer, cancellationToken).ConfigureAwait(false);
     }
 
     public static async ValueTask<byte[]> ToArrayAsync(
@@ -24,10 +23,9 @@ public static class StreamConsumerExtensions
         int copyBufferSize = StreamConsumer.DefaultBufferSize,
         CancellationToken cancellationToken = default)
     {
-        var consumer = StreamConsumer.ToArray(copyBufferSize);
-        await using (consumer.ConfigureAwait(false))
-        {
-            return await producer.ConsumeAsync(consumer, cancellationToken).ConfigureAwait(false);
-        }
+#pragma warning disable CA2007 // Consider calling ConfigureAwait on the awaited task
+        await using var consumer = StreamConsumer.ToArray(copyBufferSize);
+#pragma warning restore CA2007 // Consider calling ConfigureAwait on the awaited task
+        return await producer.ConsumeAsync(consumer, cancellationToken).ConfigureAwait(false);
     }
 }

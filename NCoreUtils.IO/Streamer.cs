@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -9,6 +10,7 @@ namespace NCoreUtils.IO;
 
 public sealed class Streamer : IAsyncDisposable
 {
+    [SuppressMessage("Reliability", "CA2012:Use ValueTasks correctly", Justification = "Performance reasons")]
     private static Action<Streamer> ProductionStartedCallback { get; } = streamer =>
     {
         // do not start consumption if any errors have already been reported within production.
@@ -18,7 +20,7 @@ public sealed class Streamer : IAsyncDisposable
         }
         if (0 == Interlocked.CompareExchange(ref streamer._consumptionStarted, 1, 0))
         {
-            streamer.ConsumptionTask = streamer.ConsumeAsync(streamer.ConsumerCancellationTokenSource.Token).AsTask();
+            streamer.ConsumptionTask = streamer.ConsumeAsync(streamer.ConsumerCancellationTokenSource.Token);
         }
     };
 
@@ -37,7 +39,7 @@ public sealed class Streamer : IAsyncDisposable
 
     private int _readerCompleted;
 
-    private Task? ConsumptionTask;
+    private ValueTask? ConsumptionTask;
 
     private TaskCompletionSource<int>? ConsumerCompletionSource { get; set; }
 
@@ -166,9 +168,9 @@ public sealed class Streamer : IAsyncDisposable
     private ValueTask GetCompletionTask()
     {
         // if consumption task has been initialized --> return it
-        if (ConsumptionTask is not null)
+        if (ConsumptionTask is ValueTask consumptionTask)
         {
-            return new ValueTask(ConsumptionTask);
+            return consumptionTask;
         }
         // otherwise fallback to async completion
         ConsumerCompletionSource ??= new TaskCompletionSource<int>();
@@ -186,7 +188,7 @@ public sealed class Streamer : IAsyncDisposable
                 if (productionTask.IsCompletedSuccessfully)
                 {
                     // consumer must have started --> consumptionTask must have been initialized
-                    return new ValueTask(ConsumptionTask!);
+                    return ConsumptionTask!.Value;
                 }
                 return productionTask;
             }
@@ -200,22 +202,28 @@ public sealed class Streamer : IAsyncDisposable
     {
         if (0 == Interlocked.CompareExchange(ref _disposed, 1, 0))
         {
-            // of completion source has been created try send cancellation
-            ConsumerCompletionSource?.TrySetCanceled();
-            // cancel operation if still relevant
-            if (!ConsumerCancellationTokenSource.IsCancellationRequested)
+            try
             {
-                await CancelAsync(ConsumerCancellationTokenSource).ConfigureAwait(false);
+                // of completion source has been created try send cancellation
+                ConsumerCompletionSource?.TrySetCanceled();
+                // cancel operation if still relevant
+                if (!ConsumerCancellationTokenSource.IsCancellationRequested)
+                {
+                    await CancelAsync(ConsumerCancellationTokenSource).ConfigureAwait(false);
+                }
+                // await task is it has been created --> it may throw OperationCanceledException but this is intended
+                if (ConsumptionTask is ValueTask consumptionTask && !consumptionTask.IsCompleted)
+                {
+                    await consumptionTask.ConfigureAwait(false);
+                }
             }
-            // await task is it has been created --> it may throw OperationCanceledException but this is intended
-            if (ConsumptionTask is not null && !ConsumptionTask.IsCompleted)
+            finally
             {
-                await Task.WhenAny(ConsumptionTask).ConfigureAwait(false);
+                // dispose resources
+                await Producer.DisposeAsync().ConfigureAwait(false);
+                await Consumer.DisposeAsync().ConfigureAwait(false);
+                ConsumerCancellationTokenSource.Dispose();
             }
-            // dispose resources
-            await Producer.DisposeAsync().ConfigureAwait(false);
-            await Consumer.DisposeAsync().ConfigureAwait(false);
-            ConsumerCancellationTokenSource.Dispose();
         }
     }
 
