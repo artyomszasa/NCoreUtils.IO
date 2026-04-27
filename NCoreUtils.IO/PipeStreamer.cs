@@ -59,7 +59,7 @@ public static class PipeStreamer
             await _second.ConfigureAwait(false).DisposeAsync();
         }
 
-        [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "The StreamAsync handles disposal")]
+        [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "StreamAsync handles disposal")]
         public ValueTask PerformAsync(Stream input, Stream output, CancellationToken cancellationToken = default)
             => StreamAsync(
                 producer: StreamProducer.Create((output, cancellationToken) => _first.PerformAsync(input, output, cancellationToken)),
@@ -74,7 +74,7 @@ public static class PipeStreamer
 
         private readonly IStreamConsumer _consumer = consumer.ThrowIfNull();
 
-        [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "The StreamAsync handles disposal")]
+        [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "StreamAsync handles disposal")]
         public ValueTask ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
             => StreamAsync(
                 producer: StreamProducer.Create((output, cancellationToken) => _transformation.PerformAsync(input, output, cancellationToken)),
@@ -95,7 +95,7 @@ public static class PipeStreamer
 
         private readonly IStreamConsumer<T> _consumer = consumer.ThrowIfNull();
 
-        [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "The StreamAsync handles disposal")]
+        [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "StreamAsync handles disposal")]
         public ValueTask<T> ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
         {
             var result = new Box<T>();
@@ -161,7 +161,7 @@ public static class PipeStreamer
         }
     }
 
-    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "A streamer felszabadítja.")]
+    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "StreamAsync handles disposal")]
     public static async ValueTask<T> ConsumeAsync<T>(this IStreamProducer producer, IStreamConsumer<T> consumer, CancellationToken cancellationToken = default)
     {
         producer.ThrowIfNull();
