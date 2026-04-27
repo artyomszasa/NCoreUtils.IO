@@ -22,6 +22,21 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NoWarn>NU5105</NoWarn>
   </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisMode>All</AnalysisMode>
+  </PropertyGroup>
+  <!-- NOTE: NET Standard polyfill -->
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net461' ">
+    <Compile Include="..\shared\CodeAnalysis\**" />
+  </ItemGroup>
+  <ItemGroup Condition="!$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net6.0'))">
+    <Compile Include="..\shared\CompilerServices\**" />
+  </ItemGroup>
+  <!-- NOTE: Common -->
+  <ItemGroup>
+    <Compile Include="..\shared\Check.cs" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\NCoreUtils.IO.Abstractions\NCoreUtils.IO.Abstractions.csproj" />
   </ItemGroup>

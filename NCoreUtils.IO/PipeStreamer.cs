@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,12 +15,12 @@ public static class PipeStreamer
 
     private sealed class BoundConsumer<T>(IStreamConsumer<T> consumer, Action<T> store) : IStreamConsumer
     {
-        private readonly IStreamConsumer<T> _consumer = consumer ?? throw new ArgumentNullException(nameof(consumer));
+        private readonly IStreamConsumer<T> _consumer = consumer.ThrowIfNull();
 
-        private readonly Action<T> _store = store ?? throw new ArgumentNullException(nameof(store));
+        private readonly Action<T> _store = store.ThrowIfNull();
 
         public async ValueTask ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
-            => _store(await _consumer.ConsumeAsync(input, cancellationToken));
+            => _store(await _consumer.ConsumeAsync(input, cancellationToken).ConfigureAwait(false));
 
         public ValueTask DisposeAsync()
             => _consumer.DisposeAsync();
@@ -27,9 +28,9 @@ public static class PipeStreamer
 
     private sealed class ChainedProducer(IStreamProducer producer, IStreamTransformation transformation) : IStreamProducer
     {
-        private readonly IStreamProducer _producer = producer ?? throw new ArgumentNullException(nameof(producer));
+        private readonly IStreamProducer _producer = producer.ThrowIfNull();
 
-        private readonly IStreamTransformation _transformation = transformation ?? throw new ArgumentNullException(nameof(transformation));
+        private readonly IStreamTransformation _transformation = transformation.ThrowIfNull();
 
         public async ValueTask DisposeAsync()
         {
@@ -37,6 +38,7 @@ public static class PipeStreamer
             await _transformation.ConfigureAwait(false).DisposeAsync();
         }
 
+        [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "The StreamAsync handles disposal")]
         public ValueTask ProduceAsync(Stream output, CancellationToken cancellationToken = default)
             => StreamAsync(
                 producer: _producer,
@@ -47,9 +49,9 @@ public static class PipeStreamer
 
     private sealed class ChainedTransformation(IStreamTransformation first, IStreamTransformation second) : IStreamTransformation
     {
-        private readonly IStreamTransformation _first = first ?? throw new ArgumentNullException(nameof(first));
+        private readonly IStreamTransformation _first = first.ThrowIfNull();
 
-        private readonly IStreamTransformation _second = second ?? throw new ArgumentNullException(nameof(second));
+        private readonly IStreamTransformation _second = second.ThrowIfNull();
 
         public async ValueTask DisposeAsync()
         {
@@ -57,6 +59,7 @@ public static class PipeStreamer
             await _second.ConfigureAwait(false).DisposeAsync();
         }
 
+        [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "StreamAsync handles disposal")]
         public ValueTask PerformAsync(Stream input, Stream output, CancellationToken cancellationToken = default)
             => StreamAsync(
                 producer: StreamProducer.Create((output, cancellationToken) => _first.PerformAsync(input, output, cancellationToken)),
@@ -67,10 +70,11 @@ public static class PipeStreamer
 
     private sealed class ChainedConsumer(IStreamTransformation transformation, IStreamConsumer consumer) : IStreamConsumer
     {
-        private readonly IStreamTransformation _transformation = transformation ?? throw new ArgumentNullException(nameof(transformation));
+        private readonly IStreamTransformation _transformation = transformation.ThrowIfNull();
 
-        private readonly IStreamConsumer _consumer = consumer ?? throw new ArgumentNullException(nameof(consumer));
+        private readonly IStreamConsumer _consumer = consumer.ThrowIfNull();
 
+        [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "StreamAsync handles disposal")]
         public ValueTask ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
             => StreamAsync(
                 producer: StreamProducer.Create((output, cancellationToken) => _transformation.PerformAsync(input, output, cancellationToken)),
@@ -87,10 +91,11 @@ public static class PipeStreamer
 
     private sealed class ChainedConsumer<T>(IStreamTransformation transformation, IStreamConsumer<T> consumer) : IStreamConsumer<T>
     {
-        private readonly IStreamTransformation _transformation = transformation ?? throw new ArgumentNullException(nameof(transformation));
+        private readonly IStreamTransformation _transformation = transformation.ThrowIfNull();
 
-        private readonly IStreamConsumer<T> _consumer = consumer ?? throw new ArgumentNullException(nameof(consumer));
+        private readonly IStreamConsumer<T> _consumer = consumer.ThrowIfNull();
 
+        [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "StreamAsync handles disposal")]
         public ValueTask<T> ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
         {
             var result = new Box<T>();
@@ -125,8 +130,11 @@ public static class PipeStreamer
         IStreamConsumer consumer,
         CancellationToken cancellationToken = default)
     {
-        await using var streamer = new Streamer(producer, consumer, cancellationToken);
-        await streamer.RunAsync();
+        var streamer = new Streamer(producer.ThrowIfNull(), consumer.ThrowIfNull(), cancellationToken);
+        await using (streamer.ConfigureAwait(false))
+        {
+            await streamer.RunAsync().ConfigureAwait(false);
+        }
     }
 
     public static IStreamConsumer Bind<T>(this IStreamConsumer<T> consumer, Action<T> store)
@@ -141,6 +149,8 @@ public static class PipeStreamer
     /// <param name="cancellationToken">Cancellation token.</param>
     public static async ValueTask ConsumeAsync(this IStreamProducer producer, IStreamConsumer consumer, CancellationToken cancellationToken = default)
     {
+        producer.ThrowIfNull();
+        consumer.ThrowIfNull();
         try
         {
             await StreamAsync(producer, consumer, cancellationToken).ConfigureAwait(false);
@@ -151,8 +161,11 @@ public static class PipeStreamer
         }
     }
 
+    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "StreamAsync handles disposal")]
     public static async ValueTask<T> ConsumeAsync<T>(this IStreamProducer producer, IStreamConsumer<T> consumer, CancellationToken cancellationToken = default)
     {
+        producer.ThrowIfNull();
+        consumer.ThrowIfNull();
         try
         {
             T result = default!;

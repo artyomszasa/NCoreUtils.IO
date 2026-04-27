@@ -12,7 +12,9 @@ public static class StreamConsumerExtensions
         int copyBufferSize = StreamConsumer.DefaultBufferSize,
         CancellationToken cancellationToken = default)
     {
+#pragma warning disable CA2007 // Consider calling ConfigureAwait on the awaited task
         await using var consumer = StreamConsumer.ToString(encoding, copyBufferSize);
+#pragma warning restore CA2007 // Consider calling ConfigureAwait on the awaited task
         return await producer.ConsumeAsync(consumer, cancellationToken).ConfigureAwait(false);
     }
 
@@ -21,7 +23,9 @@ public static class StreamConsumerExtensions
         int copyBufferSize = StreamConsumer.DefaultBufferSize,
         CancellationToken cancellationToken = default)
     {
+#pragma warning disable CA2007 // Consider calling ConfigureAwait on the awaited task
         await using var consumer = StreamConsumer.ToArray(copyBufferSize);
+#pragma warning restore CA2007 // Consider calling ConfigureAwait on the awaited task
         return await producer.ConsumeAsync(consumer, cancellationToken).ConfigureAwait(false);
     }
 }

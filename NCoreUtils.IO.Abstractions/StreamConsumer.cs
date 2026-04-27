@@ -15,11 +15,11 @@ public static class StreamConsumer
 
         public bool LeaveOpen { get; } = leaveOpen;
 
-        public Stream Target { get; } = target ?? throw new ArgumentNullException(nameof(target));
+        public Stream Target { get; } = target.ThrowIfNull();
 
         public async ValueTask ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
         {
-            await input.CopyToAsync(Target, BufferSize, cancellationToken);
+            await input.CopyToAsync(Target, BufferSize, cancellationToken).ConfigureAwait(false);
         }
 
         public ValueTask DisposeAsync()
@@ -43,8 +43,13 @@ public static class StreamConsumer
 
         public async ValueTask<byte[]> ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
         {
+#pragma warning disable CA2007 // Consider calling ConfigureAwait on the awaited task
+#if NET6_0_OR_GREATER
+            await
+#endif
             using var buffer = new MemoryStream();
-            await input.CopyToAsync(buffer, BufferSize, cancellationToken);
+#pragma warning restore CA2007 // Consider calling ConfigureAwait on the awaited task
+            await input.CopyToAsync(buffer, BufferSize, cancellationToken).ConfigureAwait(false);
             return buffer.ToArray();
         }
 
@@ -55,16 +60,16 @@ public static class StreamConsumer
     {
         public int BufferSize { get; } = bufferSize;
 
-        public Encoding Encoding { get; } = encoding ?? throw new ArgumentNullException(nameof(encoding));
+        public Encoding Encoding { get; } = encoding.ThrowIfNull();
 
         public async ValueTask<string> ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
         {
             using var reader = new StreamReader(input, Encoding, false, BufferSize, true);
-            return await reader.ReadToEndAsync(
 #if NET7_0_OR_GREATER
-                cancellationToken
+            return await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+#else
+            return await reader.ReadToEndAsync().ConfigureAwait(false);
 #endif
-            );
         }
 
         public ValueTask DisposeAsync() => default;
@@ -72,7 +77,7 @@ public static class StreamConsumer
 
     private sealed class InlineStreamConsumer(Func<Stream, CancellationToken, ValueTask> consume, Func<ValueTask>? dispose) : IStreamConsumer
     {
-        private Func<Stream, CancellationToken, ValueTask> ConsumerFun { get; } = consume ?? throw new ArgumentNullException(nameof(consume));
+        private Func<Stream, CancellationToken, ValueTask> ConsumerFun { get; } = consume.ThrowIfNull();
 
         private Func<ValueTask>? DisposeFun { get; } = dispose;
 
@@ -81,9 +86,9 @@ public static class StreamConsumer
 
         public ValueTask DisposeAsync()
         {
-            if (DisposeFun is not null)
+            if (DisposeFun is Func<ValueTask> disposeFun)
             {
-                return DisposeFun.Invoke();
+                return disposeFun();
             }
             return default;
         }
@@ -91,7 +96,7 @@ public static class StreamConsumer
 
     private sealed class InlineStreamConsumer<T>(Func<Stream, CancellationToken, ValueTask<T>> consume, Func<ValueTask>? dispose) : IStreamConsumer<T>
     {
-        private Func<Stream, CancellationToken, ValueTask<T>> ConsumerFun { get; } = consume ?? throw new ArgumentNullException(nameof(consume));
+        private Func<Stream, CancellationToken, ValueTask<T>> ConsumerFun { get; } = consume.ThrowIfNull();
 
         private Func<ValueTask>? DisposeFun { get; } = dispose;
 
@@ -100,9 +105,9 @@ public static class StreamConsumer
 
         public ValueTask DisposeAsync()
         {
-            if (DisposeFun is not null)
+            if (DisposeFun is Func<ValueTask> disposeFun)
             {
-                return DisposeFun.Invoke();
+                return disposeFun();
             }
             return default;
         }
@@ -110,18 +115,24 @@ public static class StreamConsumer
 
     private sealed class DelayedStreamConsumer(Func<CancellationToken, ValueTask<IStreamConsumer>> factory) : IStreamConsumer
     {
-        private Func<CancellationToken, ValueTask<IStreamConsumer>> Factory { get; } = factory ?? throw new ArgumentNullException(nameof(factory));
+        private Func<CancellationToken, ValueTask<IStreamConsumer>> Factory { get; } = factory.ThrowIfNull();
 
         private IStreamConsumer? Consumer { get; set; }
 
         public async ValueTask ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
         {
-            Consumer = await Factory(cancellationToken);
-            await Consumer.ConsumeAsync(input, cancellationToken);
+            Consumer = await Factory(cancellationToken).ConfigureAwait(false);
+            await Consumer.ConsumeAsync(input, cancellationToken).ConfigureAwait(false);
         }
 
         public ValueTask DisposeAsync()
-            => Consumer?.DisposeAsync() ?? default;
+        {
+            if (Consumer is IStreamConsumer consumer)
+            {
+                return consumer.DisposeAsync();
+            }
+            return default;
+        }
     }
 
     public const int DefaultBufferSize = 16 * 1024;

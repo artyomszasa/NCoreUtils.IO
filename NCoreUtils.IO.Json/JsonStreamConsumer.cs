@@ -15,11 +15,14 @@ public static class JsonStreamConsumer
 
 public class JsonStreamConsumer<T>(JsonTypeInfo<T> typeInfo) : IStreamConsumer<T?>
 {
-    public JsonTypeInfo<T> TypeInfo { get; } = typeInfo ?? throw new ArgumentNullException(nameof(typeInfo));
+    public JsonTypeInfo<T> TypeInfo { get; } = typeInfo.ThrowIfNull();
 
     public ValueTask<T?> ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
         => JsonSerializer.DeserializeAsync(input, TypeInfo, cancellationToken);
 
     public ValueTask DisposeAsync()
-        => default;
+    {
+        GC.SuppressFinalize(this);
+        return default;
+    }
 }

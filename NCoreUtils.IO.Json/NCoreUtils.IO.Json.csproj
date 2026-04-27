@@ -22,8 +22,26 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NoWarn>NU5105</NoWarn>
   </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisMode>All</AnalysisMode>
+  </PropertyGroup>
   <ItemGroup Condition=" '$(TargetFramework)' == 'net6.0' Or '$(TargetFramework)' == 'net7.0'  Or '$(TargetFramework)' == 'net8.0' Or '$(TargetFramework)' == 'net10.0' ">
     <Compile Remove="CodeAnalysis\**" />
+  </ItemGroup>
+  <!-- NOTE: NET Standard polyfill -->
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net461' Or '$(TargetFramework)' == 'net462'">
+    <Compile Include="..\shared\CodeAnalysis\**" />
+  </ItemGroup>
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net48' ">
+    <Compile Include="..\shared\CodeAnalysis\**" />
+  </ItemGroup>
+  <ItemGroup Condition="!$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net6.0'))">
+    <Compile Include="..\shared\CompilerServices\**" />
+  </ItemGroup>
+  <!-- NOTE: Common -->
+  <ItemGroup>
+    <Compile Include="..\shared\Check.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\NCoreUtils.IO.Abstractions\NCoreUtils.IO.Abstractions.csproj" />

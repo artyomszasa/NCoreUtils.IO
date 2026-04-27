@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -9,6 +10,7 @@ namespace NCoreUtils.IO;
 
 public sealed class Streamer : IAsyncDisposable
 {
+    [SuppressMessage("Reliability", "CA2012:Use ValueTasks correctly", Justification = "Performance reasons")]
     private static Action<Streamer> ProductionStartedCallback { get; } = streamer =>
     {
         // do not start consumption if any errors have already been reported within production.
@@ -57,8 +59,8 @@ public sealed class Streamer : IAsyncDisposable
         var triggerSize = Math.Min(options.Pool.MaxBufferSize, options.MinimumSegmentSize);
         var pipe = new Pipe(options);
         ConsumerCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        Producer = producer ?? throw new ArgumentNullException(nameof(producer));
-        Consumer = consumer ?? throw new ArgumentNullException(nameof(consumer));
+        Producer = producer.ThrowIfNull();
+        Consumer = consumer.ThrowIfNull();
         Writer = new PipeWriterWrapper<Streamer>(pipe.Writer, triggerSize, ProductionStartedCallback, WriterCompletionCallback, this);
         Reader = pipe.Reader;
     }
@@ -71,6 +73,16 @@ public sealed class Streamer : IAsyncDisposable
             return true;
         }
         return false;
+    }
+
+    private static ValueTask CancelAsync(CancellationTokenSource cancellationTokenSource)
+    {
+#if NET8_0_OR_GREATER
+        return new ValueTask(cancellationTokenSource.CancelAsync());
+#else
+        cancellationTokenSource.Cancel();
+        return default;
+#endif
     }
 
     private async ValueTask ConsumeAsync(CancellationToken cancellationToken)
@@ -119,7 +131,7 @@ public sealed class Streamer : IAsyncDisposable
             // cancel whole operation if not cancelled already
             if (!ConsumerCancellationTokenSource.IsCancellationRequested)
             {
-                ConsumerCancellationTokenSource.Cancel();
+                await CancelAsync(ConsumerCancellationTokenSource).ConfigureAwait(false);
             }
             // if consumption has not been started but the completion source has been created --> set as cancelled
             if (0 == Interlocked.CompareExchange(ref _consumptionStarted, 0, 0))
@@ -156,9 +168,9 @@ public sealed class Streamer : IAsyncDisposable
     private ValueTask GetCompletionTask()
     {
         // if consumption task has been initialized --> return it
-        if (ConsumptionTask.HasValue)
+        if (ConsumptionTask is ValueTask consumptionTask)
         {
-            return ConsumptionTask.Value;
+            return consumptionTask;
         }
         // otherwise fallback to async completion
         ConsumerCompletionSource ??= new TaskCompletionSource<int>();
@@ -190,22 +202,28 @@ public sealed class Streamer : IAsyncDisposable
     {
         if (0 == Interlocked.CompareExchange(ref _disposed, 1, 0))
         {
-            // of completion source has been created try send cancellation
-            ConsumerCompletionSource?.TrySetCanceled();
-            // cancel operation if still relevant
-            if (!ConsumerCancellationTokenSource.IsCancellationRequested)
+            try
             {
-                ConsumerCancellationTokenSource.Cancel();
+                // of completion source has been created try send cancellation
+                ConsumerCompletionSource?.TrySetCanceled();
+                // cancel operation if still relevant
+                if (!ConsumerCancellationTokenSource.IsCancellationRequested)
+                {
+                    await CancelAsync(ConsumerCancellationTokenSource).ConfigureAwait(false);
+                }
+                // await task is it has been created --> it may throw OperationCanceledException but this is intended
+                if (ConsumptionTask is ValueTask consumptionTask && !consumptionTask.IsCompleted)
+                {
+                    await consumptionTask.ConfigureAwait(false);
+                }
             }
-            // await task is it has been created --> it may throw OperationCanceledException but this is intended
-            if (ConsumptionTask.HasValue && !ConsumptionTask.Value.IsCompleted)
+            finally
             {
-                await Task.WhenAny(ConsumptionTask.Value.AsTask()).ConfigureAwait(false);
+                // dispose resources
+                await Producer.DisposeAsync().ConfigureAwait(false);
+                await Consumer.DisposeAsync().ConfigureAwait(false);
+                ConsumerCancellationTokenSource.Dispose();
             }
-            // dispose resources
-            await Producer.DisposeAsync().ConfigureAwait(false);
-            await Consumer.DisposeAsync().ConfigureAwait(false);
-            ConsumerCancellationTokenSource.Dispose();
         }
     }
 
