@@ -26,7 +26,7 @@ public class JsonStreamProducer(object? value, Type valueType, JsonSerializerCon
 
     public async ValueTask DisposeAsync()
     {
-        await DisposeAsyncCore();
+        await DisposeAsyncCore().ConfigureAwait(false);
         GC.SuppressFinalize(this);
     }
 
