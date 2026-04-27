@@ -22,16 +22,18 @@ public class JsonStreamProducer(object? value, Type valueType, JsonSerializerCon
 
     public JsonSerializerContext Context { get; } = context;
 
-    public ValueTask DisposeAsync()
+    protected virtual ValueTask DisposeAsyncCore() => default;
+
+    public async ValueTask DisposeAsync()
     {
+        await DisposeAsyncCore();
         GC.SuppressFinalize(this);
-        return default;
     }
 
     public ValueTask ProduceAsync(Stream output, CancellationToken cancellationToken = default)
         => new(JsonSerializer.SerializeAsync(output, Value!, ValueType, Context, cancellationToken));
 }
 
-public class JsonStreamProducer<T>(T value, JsonSerializerContext context)
+public sealed class JsonStreamProducer<T>(T value, JsonSerializerContext context)
     : JsonStreamProducer(value, typeof(T), context)
 { }
