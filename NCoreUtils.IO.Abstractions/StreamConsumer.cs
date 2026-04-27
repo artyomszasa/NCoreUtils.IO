@@ -88,7 +88,7 @@ public static class StreamConsumer
         {
             if (DisposeFun is Func<ValueTask> disposeFun)
             {
-                return disposeFun.Invoke();
+                return disposeFun();
             }
             return default;
         }
@@ -107,7 +107,7 @@ public static class StreamConsumer
         {
             if (DisposeFun is Func<ValueTask> disposeFun)
             {
-                return disposeFun.Invoke();
+                return disposeFun();
             }
             return default;
         }

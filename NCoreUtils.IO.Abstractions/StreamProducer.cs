@@ -35,14 +35,21 @@ public static class StreamProducer
         }
     }
 
-    private sealed class InlineStreamProducer(Func<Stream, CancellationToken, ValueTask> produce, Func<ValueTask>? dispose) : IStreamProducer
+    private sealed class InlineStreamProducer(Func<Stream, CancellationToken, ValueTask> produce, Func<ValueTask>? dispose)
+        : IStreamProducer
     {
         private Func<Stream, CancellationToken, ValueTask> ProducerFun { get; } = produce.ThrowIfNull();
 
         private Func<ValueTask>? DisposeFun { get; } = dispose;
 
         public ValueTask DisposeAsync()
-            => DisposeFun?.Invoke() ?? default;
+        {
+            if (DisposeFun is Func<ValueTask> disposeFun)
+            {
+                return disposeFun();
+            }
+            return default;
+        }
 
         public ValueTask ProduceAsync(Stream output, CancellationToken cancellationToken = default)
             => ProducerFun(output, cancellationToken);
@@ -77,17 +84,19 @@ public static class StreamProducer
             => output.WriteAsync(Buffer, cancellationToken);
     }
 
-    private sealed class DelayedStreamProducer(Func<CancellationToken, ValueTask<IStreamProducer>> factory) : IStreamProducer
+    private sealed class DelayedStreamProducer(Func<CancellationToken, ValueTask<IStreamProducer>> factory)
+        : IStreamProducer
     {
         private Func<CancellationToken, ValueTask<IStreamProducer>> Factory { get; } = factory.ThrowIfNull();
 
         public ValueTask DisposeAsync()
             => default;
 
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2007:Consider calling ConfigureAwait on the awaited task", Justification = "Az await using itt zajos.")]
         public async ValueTask ProduceAsync(Stream output, CancellationToken cancellationToken = default)
         {
+#pragma warning disable CA2007 // Consider calling ConfigureAwait on the awaited task
             await using var producer = await Factory(cancellationToken).ConfigureAwait(false);
+#pragma warning restore CA2007 // Consider calling ConfigureAwait on the awaited task
             await producer.ProduceAsync(output, cancellationToken).ConfigureAwait(false);
         }
     }
