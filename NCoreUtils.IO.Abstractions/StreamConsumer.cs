@@ -43,7 +43,12 @@ public static class StreamConsumer
 
         public async ValueTask<byte[]> ConsumeAsync(Stream input, CancellationToken cancellationToken = default)
         {
+#pragma warning disable CA2007 // Consider calling ConfigureAwait on the awaited task
+#if NET6_0_OR_GREATER
+            await
+#endif
             using var buffer = new MemoryStream();
+#pragma warning restore CA2007 // Consider calling ConfigureAwait on the awaited task
             await input.CopyToAsync(buffer, BufferSize, cancellationToken).ConfigureAwait(false);
             return buffer.ToArray();
         }
@@ -81,9 +86,9 @@ public static class StreamConsumer
 
         public ValueTask DisposeAsync()
         {
-            if (DisposeFun is not null)
+            if (DisposeFun is Func<ValueTask> disposeFun)
             {
-                return DisposeFun.Invoke();
+                return disposeFun.Invoke();
             }
             return default;
         }
@@ -100,9 +105,9 @@ public static class StreamConsumer
 
         public ValueTask DisposeAsync()
         {
-            if (DisposeFun is not null)
+            if (DisposeFun is Func<ValueTask> disposeFun)
             {
-                return DisposeFun.Invoke();
+                return disposeFun.Invoke();
             }
             return default;
         }
@@ -121,7 +126,13 @@ public static class StreamConsumer
         }
 
         public ValueTask DisposeAsync()
-            => Consumer?.DisposeAsync() ?? default;
+        {
+            if (Consumer is IStreamConsumer consumer)
+            {
+                return consumer.DisposeAsync();
+            }
+            return default;
+        }
     }
 
     public const int DefaultBufferSize = 16 * 1024;

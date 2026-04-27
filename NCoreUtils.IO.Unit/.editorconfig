@@ -30,3 +30,6 @@ dotnet_diagnostic.CA1852.severity = silent
 
 # CA5401: Test cryptography uses deterministic inputs intentionally
 dotnet_diagnostic.CA5401.severity = silent
+
+# CA1515: Consider making public types internal
+dotnet_diagnostic.CA1515.severity = suggestion
